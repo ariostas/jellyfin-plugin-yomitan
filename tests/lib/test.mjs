@@ -10,7 +10,16 @@ export {expect} from '@playwright/test';
  * bundles are never excused: see `isOurs`. Each entry is logged when it is used, so nothing here disappears silently.
  * @type {{pattern: RegExp, why: string}[]}
  */
-export const IGNORED_PAGE_ERRORS = [];
+export const IGNORED_PAGE_ERRORS = [
+    {
+        pattern: /ReferenceError: e is not defined[\s\S]*blob:/,
+        why: 'JASSUB\'s worker in Firefox, jellyfin-web\'s ASS renderer. It happens with the plugin blocked, and subtitles still draw',
+    },
+    {
+        pattern: /can't access property "length", t is undefined/,
+        why: 'jellyfin-web\'s home screen in Firefox, when a reload cuts off its requests. No frame of the plugin\'s is involved',
+    },
+];
 
 function isOurs(text) {
     return /\/Yomitan\/(engine|client)\.js/.test(text);
@@ -23,7 +32,7 @@ function describeError(error) {
 // Chromium reports a rejection nobody handled as a page error, and the other engines do not all do so.
 const reportRejections = () => {
     window.addEventListener('unhandledrejection', ({reason}) => {
-        console.error(`[test] unhandled rejection: ${reason?.stack ?? reason}`);
+        console.error(`[test] unhandled rejection: ${reason?.message ?? ''}\n${reason?.stack ?? reason}`);
     });
 };
 

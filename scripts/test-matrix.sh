@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the Playwright suite against every server configuration, each on a fresh server, and always cleans
-# up. Pass scenario names to run only those. JF_MATRIX_PORT sets the first port (default 18110).
+# up. Pass scenario names to run only those. JF_MATRIX_PORT sets the first port (default 18110). The plain server gets
+# every browser, and the others Chromium: they differ in how the page reaches the browser, and not in what it does there.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -14,6 +15,7 @@ declare -A scenarios=(
     [ft-inner-base-url]="JF_WITH_FT=1 JF_FT_ORDER=inner JF_BASE_URL=/jf"
 )
 order=(plain base-url ft-outer ft-inner ft-inner-base-url)
+every_browser=(--project=chromium --project=firefox --project=webkit --project=android-chrome)
 selected=("${@:-${order[@]}}")
 
 port=${JF_MATRIX_PORT:-18110}
@@ -34,7 +36,11 @@ for scenario in "${selected[@]}"; do
         "$root/scripts/dev.sh" reset
         "$root/scripts/dev.sh" up
         cd "$root/tests"
-        npx playwright test
+        if [[ $scenario == plain ]]; then
+            npx playwright test "${every_browser[@]}"
+        else
+            npx playwright test --project=chromium
+        fi
     ); then
         failed+=("$scenario")
     fi

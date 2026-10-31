@@ -3,7 +3,7 @@ import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
 import {expectPopup, isPaused, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {countListeners, engineTimers, nativeState, trackEngineTimers} from '../lib/player.mjs';
+import {countListeners, engineTimers, jellyfinLine, trackEngineTimers} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
@@ -27,12 +27,16 @@ const store = (page, value) => page.addInitScript(([key, text]) => {
     localStorage.setItem(key, text);
 }, [STORAGE_KEY, typeof value === 'string' ? value : JSON.stringify(value)]);
 
-/** Records every listener the plugin's own code adds to the page, in every browser, by where the call came from. */
+/**
+ * Records every listener the plugin's own code adds to the page, in every browser, by what called addEventListener. The
+ * rest of the stack can hold the loader's wrapper around Events.trigger, under listeners that are jellyfin-web's.
+ */
 const trackOurListeners = (page) => page.addInitScript(() => {
     window.ourListeners = [];
     const {addEventListener} = EventTarget.prototype;
     EventTarget.prototype.addEventListener = function (type, ...rest) {
-        if ((this instanceof Node || this instanceof Window) && /\/Yomitan\//.test(new Error('where').stack)) {
+        const [, caller] = new Error('where').stack.split('\n').filter((frame) => !frame.startsWith('Error'));
+        if ((this instanceof Node || this instanceof Window) && /\/Yomitan\//.test(caller)) {
             window.ourListeners.push(`${this.constructor.name} ${type}`);
         }
 
@@ -119,8 +123,7 @@ test.describe('with enabled off', () => {
         expect(await ownElements(page)).toEqual({elements: 0, attribute: false});
         expect(await page.evaluate(() => window.ourListeners)).toEqual([]);
         expect(await page.evaluate(() => window.__yomitanJellyfin.playback)).toBeUndefined();
-        const state = await nativeState(page);
-        expect(state.tracks).toEqual([expect.objectContaining({mode: 'showing'})]);
+        expect(await jellyfinLine(page)).toBe('showing');
         expect(await isPaused(page)).toBe(false);
     });
 
@@ -154,8 +157,12 @@ test.describe('with enabled off', () => {
         await logIn(page);
         const {LookupSample: item} = await getMovies();
         await play(page, item, {subtitleStreamIndex: 0, minimumTime: 1});
-        const cues = await page.evaluate(() => document.querySelector('video.htmlvideoplayer').textTracks[0].activeCues?.length);
-        expect(cues).toBe(1);
+        await expect.poll(() => page.evaluate(() => {
+            const inner = document.querySelector('.videoSubtitlesInner');
+            const cue = document.querySelector('video.htmlvideoplayer').textTracks[0]?.activeCues?.[0];
+            return inner?.textContent ?? cue?.text ?? '';
+        })).toContain('昨日');
+        expect(await jellyfinLine(page)).toBe('showing');
         expect(await ownElements(page)).toEqual({elements: 0, attribute: false});
     });
 });
@@ -172,7 +179,7 @@ test.describe('turning it off and on while playing', () => {
 
         await page.evaluate(() => window.__yomitanJellyfin.settings.set('enabled', false));
         await expect.poll(() => ownElements(page)).toEqual({elements: expect.any(Number), attribute: false});
-        expect((await nativeState(page)).tracks).toEqual([expect.objectContaining({mode: 'showing'})]);
+        expect(await jellyfinLine(page)).toBe('showing');
         expect((await engineTimers(page)).intervals).toBe(0);
         expect(await page.locator('.yomitan-layer').count()).toBe(0);
         if (browserName === 'chromium') {

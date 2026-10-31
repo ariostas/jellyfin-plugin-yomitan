@@ -839,9 +839,11 @@ The `Content-Type` comes from the file's extension through Yomitan's table in `m
 dictionary. SVG is `image/svg+xml` with `Content-Disposition: attachment`.
 
 **Dictionaries are untrusted input, and an SVG is a document that can run script.** A client must only ever show one
-through `<img>`, which does not run it. It must not inline it, or use `<object>`, `<embed>` or `<iframe>`. The same
-caution applies to a summary's `styles`, which is the dictionary's own CSS: it has to be scoped to the popup, and it can
-reach the network through `url()`.
+through `<img>`, which does not run it. It must not inline it, or use `<object>`, `<embed>` or `<iframe>`, and a `blob:`
+URL of one must not be something a person can open, since it has the page's origin. The same caution applies to a
+summary's `styles`, which is the dictionary's own CSS: it has to be scoped to the popup, and it can reach the network
+through `url()`. Glossaries can too, through their `style` objects. See [client.md](client.md#untrusted-dictionaries)
+for how the plugin's own client handles all of this.
 
 <!-- example -->
 ```http request

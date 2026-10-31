@@ -56,7 +56,7 @@ Lookups need these numbers re-measured on real hardware, since everything ran on
 
 | Client | Loads server web UI? | Expected | Basis |
 | --- | --- | --- | --- |
-| Desktop browser | Yes | Works | Tested in Chromium. Firefox and Safari untested. |
+| Desktop browser | Yes | Works | Tested in Chromium, Firefox and Playwright's WebKit on Linux. Safari itself untested. |
 | Mobile browser | Yes | Works | Touch emulated only. Real phones untested. |
 | Jellyfin Android app | Yes, in a WebView | Works with a setting | Source read, not run. **Defaults to native ExoPlayer**, so the user must select the web player. |
 | LG webOS | Yes, hosted | Should work | Source read, plus webOS user agent emulation (custom DOM subtitles, TV layout, Back keyCode 461 dispatched synthetically). No real TV. |
@@ -193,6 +193,10 @@ seeks, track switches and transcoding.
 **Exit:** the desktop and mobile flows work in automated tests, and normal playback is unchanged when the feature
 is off. Real phone and Android app checks are left for the user, listed in the README.
 
+**Phase 4 result:** done, with these changes to the plan. The overlay moved out of the video's container to a layer on the
+body, because jellyfin-web's page covers the container and nothing inside it can be hit. `enabled` defaults to on until
+Phase 6 has a way to turn it on, against decision 4. See [docs/client.md](docs/client.md#using-a-word).
+
 ### Phase 5: Keyboard and remote navigation
 
 The flow above, kept because it is already proven and also serves desktop keyboards. It applies in any
@@ -217,7 +221,8 @@ jellyfin-web layout. No real TV pass.
 - Plugin repository `manifest.json`, so users add one URL.
 - Release workflow building per Jellyfin ABI. The current server is net10.0, and 10.11 is net9.0.
 - Scheduled CI against the latest Jellyfin image. The plugin depends on unofficial DOM: `video.htmlvideoplayer`,
-  `.videoOsdBottom`, `.videoSubtitles`, `.libassjs-canvas`, `window.ApiClient`. Failures here are the early warning.
+  `.videoOsdBottom`, `.osdControls`, `.videoOsd-appBar`, `.videoSubtitlesInner`, `.libassjs-canvas`, `window.ApiClient`,
+  `window.Events` and its `SHOW_VIDEO_OSD` event. Failures here are the early warning.
 - README listing client support honestly, including the Android player setting.
 
 ## Not in scope for v1

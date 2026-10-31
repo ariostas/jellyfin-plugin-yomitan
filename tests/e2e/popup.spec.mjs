@@ -266,6 +266,7 @@ test.describe('from code, with no pointer', () => {
         expect(await openWord(page, '彼女').catch(() => false)).toBe(false);
         await expect.poll(() => isPaused(page)).toBe(false);
         expect((await popupState(page)).open).toBe(false);
+        await page.unrouteAll({behavior: 'ignoreErrors'});
     });
 });
 
@@ -309,6 +310,13 @@ async function layout(page) {
     });
 }
 
+/** For reading by eye. Only in Chromium, since a screenshot of a playing video can hang in headless WebKit. */
+async function screenshot(page, testInfo, name) {
+    if (testInfo.project.name === 'chromium' || testInfo.project.name === 'android-chrome') {
+        await page.screenshot({path: testInfo.outputPath(`${name}.png`)});
+    }
+}
+
 const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
 function expectGoodLayout({viewport, popup, onTop, word, line, controls, scrolled}, label) {
@@ -340,7 +348,7 @@ test.describe('where it goes', () => {
             const long = await popupState(page);
             expect(long.scrollHeight, 'a long entry scrolls inside').toBeGreaterThan(long.clientHeight);
             expectGoodLayout(await layout(page), `${name}, long entry`);
-            await page.screenshot({path: testInfo.outputPath(`${name}-long.png`)});
+            await screenshot(page, testInfo, `${name}-long`);
 
             await openWord(page, '彼女');
             await expectPopup(page, '彼女');
@@ -364,7 +372,7 @@ test.describe('where it goes', () => {
             await openWord(page, '飲みます');
             await expectPopup(page, '飲む');
             expectGoodLayout(await layout(page), `${name}, OSD up`);
-            await page.screenshot({path: testInfo.outputPath(`${name}-osd.png`)});
+            await screenshot(page, testInfo, `${name}-osd`);
         });
     }
 
@@ -383,7 +391,7 @@ test.describe('where it goes', () => {
         await expect.poll(async () => (await popupState(page)).open).toBe(true);
         expect((await popupState(page)).side).toBe('below');
         expectGoodLayout(await layout(page), 'sign');
-        await page.screenshot({path: testInfo.outputPath('sign.png')});
+        await screenshot(page, testInfo, 'sign');
     });
 
     test('a line that wraps still leaves the word uncovered', async ({page}) => {

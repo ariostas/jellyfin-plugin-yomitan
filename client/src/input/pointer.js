@@ -122,9 +122,13 @@ export class PointerInput {
         }
     }
 
-    _open(word, source) {
+    async _open(word, source) {
         this._openedBy = source;
-        this._lookup.open(word);
+        await this._lookup.open(word);
+        // A word that turned out to have nothing leaves nobody in charge. The next input must not find a stale owner.
+        if (!this._lookup.current) {
+            this._openedBy = null;
+        }
     }
 
     _onPointerDown = (event) => {

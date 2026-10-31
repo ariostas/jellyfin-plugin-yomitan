@@ -237,6 +237,7 @@ test('what the importer would refuse is safe in the client too', async ({page}) 
     await page.waitForTimeout(500);
     expect(await pwned(page)).toBeNull();
     expect(outside).toEqual([]);
+    await page.unrouteAll({behavior: 'ignoreErrors'});
 });
 
 test('the title of a dictionary cannot break out of its scope', async ({page}) => {

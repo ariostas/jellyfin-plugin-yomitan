@@ -757,7 +757,8 @@ test.describe('a real transcode', () => {
 test.describe('nothing leaks', () => {
     test.beforeEach(({page}) => trackEngineTimers(page));
 
-    test('track switches leave the same listeners and timers', async ({page}) => {
+    test('track switches leave the same listeners and timers', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'Counting listeners takes Chromium\'s debugger.');
         await logIn(page);
         await startJapanese(page);
         const video = 'document.querySelector("video.htmlvideoplayer")';
@@ -775,7 +776,8 @@ test.describe('nothing leaks', () => {
         expect(await page.locator('.yomitan-overlay').count()).toBe(1);
     });
 
-    test('leaving the player tears everything down', async ({page}) => {
+    test('leaving the player tears everything down', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'Counting listeners takes Chromium\'s debugger.');
         await logIn(page);
         await startJapanese(page);
         const listenersBefore = {

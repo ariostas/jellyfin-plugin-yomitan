@@ -3,7 +3,7 @@
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, getMovies, logIn, play} from '../lib/jellyfin.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {expectTrack, nativeState, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
+import {expectTrack, jellyfinLine, nativeState, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
@@ -41,6 +41,8 @@ const visibility = (page, selector) => page.evaluate((target) => {
 }, selector);
 
 test.describe('native cues', () => {
+    test.skip(({browserName}) => browserName !== 'chromium', 'jellyfin-web draws text in the custom element in Firefox and WebKit.');
+
     test('hidden while the overlay is up, showing with its cues again after a failure', async ({page}) => {
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS_JAPANESE, minimumTime: 1});
@@ -55,15 +57,17 @@ test.describe('native cues', () => {
         expect(state.tracks[0].cues).toBeGreaterThan(0);
     });
 
-    test('going to a track that is not Japanese brings Jellyfin\'s line back', async ({page}) => {
-        await logIn(page);
-        await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS_JAPANESE, minimumTime: 1});
-        await expectTrack(page, {state: 'active'});
-        await setSubtitleTrack(page, ENGLISH_TRACK);
-        await expectTrack(page, {state: 'inactive', language: 'eng'});
-        await expect.poll(() => nativeState(page)).toMatchObject({hiding: false, overlay: false});
-        await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
-    });
+});
+
+test('going to a track that is not Japanese brings Jellyfin\'s line back', async ({page}) => {
+    await logIn(page);
+    await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS_JAPANESE, minimumTime: 1});
+    await expectTrack(page, {state: 'active'});
+    await expect.poll(() => jellyfinLine(page)).toBe('hidden');
+    await setSubtitleTrack(page, ENGLISH_TRACK);
+    await expectTrack(page, {state: 'inactive', language: 'eng'});
+    await expect.poll(() => nativeState(page)).toMatchObject({hiding: false, overlay: false});
+    await expect.poll(() => jellyfinLine(page)).toBe('showing');
 });
 
 test.describe('the custom element', () => {
@@ -142,6 +146,6 @@ test.describe('navigation', () => {
         await expectTrack(page, {state: 'active'});
         await setVideoTime(page, 30);
         await page.waitForTimeout(800);
-        expect((await nativeState(page)).tracks[0].mode).toBe('hidden');
+        expect(await jellyfinLine(page)).toBe('hidden');
     });
 });

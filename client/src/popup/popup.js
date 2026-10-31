@@ -1,7 +1,7 @@
 // The popup: an element in a shadow root, so neither jellyfin-web's CSS nor Yomitan's can reach the other. It shows what
 // it is given and knows nothing about words or playback. See lookup.js for that.
 import displayCss from 'yomitan-assets:css';
-import {placePopup} from './placement.js';
+import {placePopup, popupWidth} from './placement.js';
 
 const FRAME_CSS = `
 :host {
@@ -131,7 +131,7 @@ export class Popup {
         const {host, _frame: frame, _scroll: scroll} = this;
         const viewport = {width: innerWidth, height: innerHeight};
         host.style.visibility = 'hidden';
-        host.style.width = `${Math.min(viewport.width - 16, 460)}px`;
+        host.style.width = `${popupWidth(viewport.width)}px`;
         host.style.left = '0';
         host.style.top = '0';
         frame.style.height = 'auto';
@@ -140,7 +140,6 @@ export class Popup {
         const height = Math.min(contentHeight, placement.maxHeight);
         host.style.left = `${placement.left}px`;
         host.style.top = `${placement.top}px`;
-        host.style.width = `${placement.width}px`;
         frame.style.height = `${height}px`;
         host.dataset.side = placement.side;
         host.style.visibility = '';

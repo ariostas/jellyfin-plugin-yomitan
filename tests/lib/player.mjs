@@ -86,6 +86,27 @@ export function nativeState(page) {
     });
 }
 
+/**
+ * Jellyfin's own line, whichever way this browser draws text: a native track in Chromium, and the custom element in
+ * Firefox and WebKit, which is what jellyfin-web chooses there by default.
+ * @returns {Promise<'showing'|'hidden'|'none'>}
+ */
+export function jellyfinLine(page) {
+    return page.evaluate(() => {
+        const track = document.querySelector('video.htmlvideoplayer')?.textTracks[0];
+        const inner = document.querySelector('.videoSubtitlesInner');
+        if (track) {
+            return track.mode;
+        }
+
+        if (inner) {
+            return getComputedStyle(inner).visibility === 'hidden' ? 'hidden' : 'showing';
+        }
+
+        return 'none';
+    });
+}
+
 export function setVideoTime(page, time) {
     return page.evaluate((target) => {
         const manager = window.__yomitanJellyfin.playback.playbackManager;

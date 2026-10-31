@@ -8,15 +8,23 @@ const MAX_WIDTH = 460;
 const COMFORTABLE_HEIGHT = 180;
 
 /**
+ * @param {number} viewportWidth
+ * @returns {number} How wide the popup is, which it has to know before it can measure its content.
+ */
+export function popupWidth(viewportWidth) {
+    return Math.min(viewportWidth - 2 * MARGIN, MAX_WIDTH);
+}
+
+/**
  * @param {object} options
  * @param {{width: number, height: number}} options.viewport
  * @param {{left: number, right: number, top: number, bottom: number}} options.anchor The word.
  * @param {number} options.contentHeight How tall the entries want to be.
  * @param {number} [options.avoidBottom] Pixels at the bottom to stay out of if there is a choice, for the OSD.
- * @returns {{left: number, top: number, width: number, maxHeight: number, side: 'above'|'below'}}
+ * @returns {{left: number, top: number, maxHeight: number, side: 'above'|'below'}}
  */
 export function placePopup({viewport, anchor, contentHeight, avoidBottom = 0}) {
-    const width = Math.min(viewport.width - 2 * MARGIN, MAX_WIDTH);
+    const width = popupWidth(viewport.width);
     const middle = (anchor.left + anchor.right) / 2;
     const left = Math.min(Math.max(MARGIN, middle - width / 2), viewport.width - MARGIN - width);
 
@@ -27,9 +35,9 @@ export function placePopup({viewport, anchor, contentHeight, avoidBottom = 0}) {
     const useBelow = above < Math.min(contentHeight, COMFORTABLE_HEIGHT) && below > above;
     if (useBelow) {
         const maxHeight = Math.max(contentHeight <= belowClear ? belowClear : below, 0);
-        return {left, top: anchor.bottom + GAP, width, maxHeight, side: 'below'};
+        return {left, top: anchor.bottom + GAP, maxHeight, side: 'below'};
     }
 
     const maxHeight = Math.max(above, 0);
-    return {left, top: anchor.top - GAP - Math.min(contentHeight, maxHeight), width, maxHeight, side: 'above'};
+    return {left, top: anchor.top - GAP - Math.min(contentHeight, maxHeight), maxHeight, side: 'above'};
 }

@@ -256,6 +256,33 @@ test.describe('a mouse that is only passing', () => {
     });
 });
 
+test.describe('words that go away', () => {
+    test('a line that ends during the hover delay leaves nothing behind', async ({page}) => {
+        await start(page);
+        await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverDelayMs', 800));
+        const line = await wordCentre(page, '学校');
+        await page.mouse.move(line.x, line.y - 200);
+        await page.waitForTimeout(100);
+        await showLine(page, {at: 9.1});
+        await countPlayState(page);
+        await moveToWord(page, '学校');
+        // The line ends at 9.5 s, inside the delay. That word is then not there to open.
+        await page.waitForFunction(() => window.__yomitanJellyfin.playback.session.cues.length === 0, null, {timeout: 3000});
+        await page.waitForTimeout(1000);
+        expect(await playStateCounts(page)).toEqual({pause: 0, play: 0});
+        expect((await popupState(page)).open).toBe(false);
+    });
+
+    test('the mouse leaving the window counts as moving away', async ({page}) => {
+        await start(page);
+        await moveToWord(page, '学校');
+        await expectPopup(page, '学校');
+        await page.mouse.move(-20, 300);
+        await expectNoPopup(page);
+        await expect.poll(() => isPaused(page)).toBe(false);
+    });
+});
+
 test.describe('closing', () => {
     test('space resumes, closes the popup, and is not undone', async ({page}) => {
         await start(page);

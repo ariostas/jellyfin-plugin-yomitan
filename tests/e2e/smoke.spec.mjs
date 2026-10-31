@@ -1,5 +1,5 @@
-import {expect, test} from '@playwright/test';
 import {clientScript, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
+import {expect, test} from '../lib/test.mjs';
 
 test('the client script runs in jellyfin-web and stays single across reloads', async ({page}) => {
     const scriptResponses = [];
