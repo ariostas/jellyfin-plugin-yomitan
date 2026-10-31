@@ -4,7 +4,8 @@
 const server = process.argv[2];
 const user = {Name: 'spike', Password: 'spike'};
 const auth = 'MediaBrowser Client="yomitan-dev", Device="dev", DeviceId="yomitan-dev", Version="1"';
-const expectedMovies = 3;
+const expectedMovies = 6;
+const expectedEpisodes = 2;
 const timeoutMs = 120_000;
 
 async function call(path, {method = 'GET', body, token} = {}) {
@@ -54,19 +55,19 @@ async function runWizard() {
     await call('/Startup/Complete', {method: 'POST'});
 }
 
-async function addLibrary(token) {
+async function addLibrary(token, name, collectionType, path) {
     const folders = await call('/Library/VirtualFolders', {token});
-    if (folders.some((folder) => folder.Name === 'Movies')) {
+    if (folders.some((folder) => folder.Name === name)) {
         return;
     }
-    await call('/Library/VirtualFolders?name=Movies&collectionType=movies&refreshLibrary=true', {
+    await call(`/Library/VirtualFolders?name=${name}&collectionType=${collectionType}&refreshLibrary=true`, {
         method: 'POST',
         token,
         body: {
             LibraryOptions: {
                 EnableInternetProviders: false,
                 EnableRealtimeMonitor: false,
-                PathInfos: [{Path: '/media/Movies'}],
+                PathInfos: [{Path: path}],
             },
         },
     });
@@ -83,16 +84,21 @@ if (!info.StartupWizardCompleted) {
 const {AccessToken: token, User: {Id: userId}} = await waitFor('login', () =>
     call('/Users/AuthenticateByName', {method: 'POST', body: {Username: user.Name, Pw: user.Password}}));
 
-await addLibrary(token);
+await addLibrary(token, 'Movies', 'movies', '/media/Movies');
+await addLibrary(token, 'Shows', 'tvshows', '/media/Shows');
+if (process.env.JF_EXTRA_MEDIA) {
+    await addLibrary(token, 'Extra', 'movies', '/extra/Movies');
+}
 
 // The scan that adding a library starts can finish without seeing the new folder, so keep asking for one.
 await waitFor('the library scan', async () => {
-    const {TotalRecordCount: count} = await call(
-        `/Items?userId=${userId}&recursive=true&includeItemTypes=Movie`, {token});
-    if (count < expectedMovies) {
+    const count = async (type) => (await call(
+        `/Items?userId=${userId}&recursive=true&includeItemTypes=${type}`, {token})).TotalRecordCount;
+    const done = await count('Movie') >= expectedMovies && await count('Episode') >= expectedEpisodes;
+    if (!done) {
         await call('/Library/Refresh', {method: 'POST', token});
     }
-    return count >= expectedMovies;
+    return done;
 });
 
 const plugins = await call('/Plugins', {token});

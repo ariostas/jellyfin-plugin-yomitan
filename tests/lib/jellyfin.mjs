@@ -72,6 +72,13 @@ export async function getMovies() {
     return Object.fromEntries(items.map((item) => [item.Name.replace(/ \(\d{4}\)$/, ''), item.Id]));
 }
 
+/** Returns the id of each episode, in order. */
+export async function getEpisodes() {
+    const [user] = await api('/Users');
+    const {Items: items} = await api(`/Items?userId=${user.Id}&recursive=true&includeItemTypes=Episode&sortBy=IndexNumber`);
+    return items.map((item) => item.Id);
+}
+
 /** Opens jellyfin-web and logs in through the form. */
 export async function logIn(page) {
     await page.goto('web/');
@@ -89,7 +96,7 @@ export async function logIn(page) {
  * Starts a movie in the page's own client through the Sessions API, the way "play on" does. Going through
  * the UI would tie every test to the layout, and playbackManager is not reachable from the page.
  */
-export async function play(page, itemId, {minimumTime = 3} = {}) {
+export async function play(page, itemId, {minimumTime = 3, subtitleStreamIndex} = {}) {
     const deviceId = await page.evaluate(() => window.ApiClient.deviceId());
     let session;
     await expect.poll(async () => {
@@ -101,6 +108,19 @@ export async function play(page, itemId, {minimumTime = 3} = {}) {
     await page.waitForFunction((time) => {
         const video = document.querySelector('video.htmlvideoplayer');
         return video && video.currentTime > time && !video.paused;
-    }, minimumTime, {timeout: 45_000});
+    }, subtitleStreamIndex === undefined ? minimumTime : 0, {timeout: 45_000});
+
+    // jellyfin-web ignores a subtitle index in the play command, so choose the track the way a remote control does.
+    if (subtitleStreamIndex !== undefined) {
+        await api(`/Sessions/${session.Id}/Command`, {
+            method: 'POST',
+            body: {Name: 'SetSubtitleStreamIndex', Arguments: {Index: `${subtitleStreamIndex}`}},
+        });
+        await page.waitForFunction((time) => {
+            const video = document.querySelector('video.htmlvideoplayer');
+            return video && video.currentTime > time && !video.paused;
+        }, minimumTime, {timeout: 45_000});
+    }
+
     return session.Id;
 }

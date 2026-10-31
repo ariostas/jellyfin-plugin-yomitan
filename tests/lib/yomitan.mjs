@@ -57,6 +57,7 @@ export async function bundleYomitan() {
         export {DictionaryDatabase} from '${root}ext/js/dictionary/dictionary-database.js';
         export {DictionaryImporter} from '${root}ext/js/dictionary/dictionary-importer.js';
         export {DictionaryImporterMediaLoader} from '${root}ext/js/dictionary/dictionary-importer-media-loader.js';
+        export {DisplayGenerator} from '${root}ext/js/display/display-generator.js';
         export {Translator} from '${root}ext/js/language/translator.js';
         export {createFindKanjiOptions, createFindTermsOptions} from '${root}test/utilities/translator.js';
     `);

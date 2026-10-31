@@ -14,7 +14,7 @@ test('the client script runs in jellyfin-web and stays single across reloads', a
     await logIn(page);
 
     const marker = await page.evaluate(() => window.__yomitanJellyfin);
-    expect(marker).toEqual({version: expect.any(String)});
+    expect(marker).toMatchObject({version: expect.any(String)});
     expect(scriptResponses.length).toBe(1);
     expect(scriptResponses[0].status()).toBe(200);
     expect(new URL(scriptResponses[0].url()).pathname).toBe(`${server.prefix}/Yomitan/client.js`);
@@ -24,7 +24,7 @@ test('the client script runs in jellyfin-web and stays single across reloads', a
         await page.reload();
         await page.waitForFunction(() => window.ApiClient?.isLoggedIn());
         await expect(page.locator(clientScript)).toHaveCount(1);
-        expect(await page.evaluate(() => window.__yomitanJellyfin)).toEqual(marker);
+        expect(await page.evaluate(() => window.__yomitanJellyfin.version)).toEqual(marker.version);
     }
 
     expect(errors).toEqual([]);
@@ -40,7 +40,7 @@ test('the client is present before login, on the login page', async ({page}) => 
 test('a movie plays with the client loaded', async ({page}) => {
     await logIn(page);
     const movies = await getMovies();
-    expect(Object.keys(movies).sort()).toEqual(['AssSample', 'SrtSample', 'TranscodeSample']);
+    expect(Object.keys(movies).sort()).toEqual(['AssSample', 'ImageSample', 'SrtSample', 'TracksSample', 'TranscodeSample', 'TypesetSample']);
 
     await play(page, movies.SrtSample);
     expect(await page.evaluate(() => window.__yomitanJellyfin)).toBeTruthy();

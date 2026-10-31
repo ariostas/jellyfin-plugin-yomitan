@@ -1,0 +1,95 @@
+1
+00:00:02,000 --> 00:00:03,600
+I did not go to school yesterday
+
+2
+00:00:04,000 --> 00:00:05,600
+She could not eat the cake
+
+3
+00:00:06,000 --> 00:00:07,600
+I will drink coffee
+
+4
+00:00:08,000 --> 00:00:09,600
+I do not want to go to school
+
+5
+00:00:10,000 --> 00:00:11,600
+I saw a film with a friend
+
+6
+00:00:12,000 --> 00:00:13,600
+It will probably rain tomorrow
+
+7
+00:00:14,000 --> 00:00:15,600
+The cat is looking out of the window
+
+8
+00:00:16,000 --> 00:00:17,600
+I cannot buy it because I have no money
+
+9
+00:00:18,000 --> 00:00:19,600
+It is ten minutes on foot to the station
+
+10
+00:00:20,000 --> 00:00:21,600
+This book is very interesting
+
+11
+00:00:22,000 --> 00:00:23,600
+I wrote a letter to the teacher
+
+12
+00:00:24,000 --> 00:00:25,600
+I have not eaten breakfast
+
+13
+00:00:26,000 --> 00:00:27,600
+The train is late
+
+14
+00:00:28,000 --> 00:00:29,600
+I like climbing mountains
+
+15
+00:00:30,000 --> 00:00:31,600
+The children are playing in the park
+
+16
+00:00:32,000 --> 00:00:33,600
+I want to buy new shoes
+
+17
+00:00:34,000 --> 00:00:35,600
+Let us go to bed early tonight
+
+18
+00:00:36,000 --> 00:00:37,600
+I am studying Japanese
+
+19
+00:00:38,000 --> 00:00:39,600
+Nobody came
+
+20
+00:00:40,000 --> 00:00:41,600
+Please say it once more
+
+21
+00:00:42,000 --> 00:00:43,600
+May I open the window
+
+22
+00:00:44,000 --> 00:00:45,600
+I run while listening to music
+
+23
+00:00:46,000 --> 00:00:47,600
+I have swum in the sea
+
+24
+00:00:48,000 --> 00:00:49,600
+See you again tomorrow

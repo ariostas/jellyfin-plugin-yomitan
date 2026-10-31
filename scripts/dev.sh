@@ -13,6 +13,7 @@
 #   JF_WITH_FT       1 installs File Transformation (default 0)
 #   JF_FT_ORDER      where File Transformation's middleware sits relative to ours: outer (default, what
 #                    the real plugin names give) or inner. The server orders plugins by manifest name.
+#   JF_EXTRA_MEDIA   a directory of real media, as a third library. See tests/e2e/real-film.spec.mjs (default none)
 #   JF_IMAGE         server image
 set -euo pipefail
 
@@ -63,11 +64,17 @@ up() {
     set_base_url
     install_plugins
 
+    local extra=()
+    if [[ -n ${JF_EXTRA_MEDIA:-} ]]; then
+        extra=(--volume "$JF_EXTRA_MEDIA:/extra:ro,z")
+    fi
+
     podman run --detach --name "$name" \
         --publish "127.0.0.1:$port:8096" \
         --volume "$state/config:/config:Z" \
         --volume "$state/cache:/cache:Z" \
         --volume "$root/.dev/media:/media:ro,z" \
+        "${extra[@]}" \
         "$jellyfin_image" >/dev/null
 
     node "$root/scripts/lib/provision.mjs" "http://127.0.0.1:$port$base_url"
