@@ -21,7 +21,9 @@ cd tests && YOMITAN_UPDATE_API_DOC=1 npx playwright test e2e/contract.spec.mjs
   {"error": {"code": "not_found", "message": "No such image"}}
   ```
 
-  `code` is stable and listed under [Error codes](#error-codes). `message` is for people and can change.
+  `code` is stable and listed under [Error codes](#error-codes). `message` is for people and can change. A `500` is
+  plain text from Jellyfin, and means something is wrong on the server, such as a damaged database. Jellyfin itself and
+  the rest of the plugin keep working then, and the server log has the cause.
 
 ### Who can call what
 
