@@ -122,7 +122,9 @@ Instead every candidate gets a cost, and the cheapest path through the line wins
 `segmenter.js`, and the comments there say why each exists. About 1 per word, so fewer words is better, and more for weak
 evidence: a name, a rare word, hiragana that only matches a kanji word's reading, or a span that is really a word plus a
 particle. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
-only if a headword does, because `ヤバい` and `消しゴム` really are written that way.
+only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what
+the rule was for, but it still changes 17 of 1,847 lines of real subtitles, nearly all for the better, such as
+`の/デパート` over `のデ/パート`.
 
 It is a one-word-at-a-time model, so it cannot use grammar. It got 24 of 28 unseen lines of real subtitles exactly right
 (fixed by hand, in advance). The misses are in `tests/fixtures/segmentation-corpus.mjs`, marked `known`.
