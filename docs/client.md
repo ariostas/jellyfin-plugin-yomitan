@@ -69,7 +69,8 @@ changes. `NativeSubtitles.restore()` catches them up.
 
 Jellyfin's subtitles are hidden only after the track's text, the dictionary API and at least one dictionary have all
 worked. `PlaybackSession._fail()` is the one path for anything that goes wrong after that: it removes the overlay,
-restores the native line and stays `inactive` until the track changes. There is no retry within a track.
+restores the native line and stays `inactive` until the track changes. Before that, `QueryClient` retries a request
+twice over about 2 s on a network error or a 5xx, so a short drop only delays a line's words. A 4xx is not retried.
 
 | Situation | What happens |
 | --- | --- |
@@ -78,7 +79,7 @@ restores the native line and stays `inactive` until the track changes. There is 
 | `Stream.js` fails | `inactive`, native line stays |
 | ASS script fails | Falls back to `Stream.js`, which has no layers or styles |
 | Query fails or no dictionaries, at the start | `inactive`, native line stays |
-| Query fails later | Overlay removed, native line restored |
+| Query fails later | Retried, then overlay removed and native line restored |
 | Engine script fails to load | Logged, nothing else happens |
 | `Events` never appears | Logged at debug level, nothing else happens |
 

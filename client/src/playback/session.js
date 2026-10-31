@@ -31,6 +31,8 @@ export class PlaybackSession {
         this._getEngine = getEngine;
         this._emit = emit;
         this._abort = new AbortController();
+        /** Everything that drives the overlay. Ends with it, which can be long before the session is disposed. */
+        this._driving = null;
         this._native = new NativeSubtitles(video, () => playback.subtitleOffset());
         this._overlay = null;
         this._timeline = null;
@@ -105,7 +107,8 @@ export class PlaybackSession {
     }
 
     _activate(engine, cues) {
-        const {signal} = this._abort;
+        this._driving = new AbortController();
+        const {signal} = this._driving;
         this._engine = engine;
         this._segmenter = new Segmenter(engine);
         this._timeline = new CueTimeline(cues);
@@ -247,6 +250,7 @@ export class PlaybackSession {
     }
 
     _tearDown() {
+        this._driving?.abort();
         cancelAnimationFrame(this._animationFrame);
         this._animationFrame = 0;
         this._pending = [];

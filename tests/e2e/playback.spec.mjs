@@ -312,6 +312,8 @@ test.describe('failing safe', () => {
     });
 
     test('a query that starts failing in mid-playback gives the native line back', async ({page}) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(String(error)));
         await logIn(page);
         await startJapanese(page);
         await page.route('**/Yomitan/Query', (route) => route.fulfill({status: 500, body: 'broken'}));
@@ -328,6 +330,45 @@ test.describe('failing safe', () => {
         const time = await page.evaluate(() => document.querySelector('video.htmlvideoplayer').currentTime);
         await page.waitForTimeout(800);
         expect(await page.evaluate(() => document.querySelector('video.htmlvideoplayer').currentTime)).toBeGreaterThan(time);
+
+        // The video keeps firing events, and nothing of ours may still be listening.
+        await setVideoTime(page, 12);
+        await page.waitForTimeout(800);
+        expect(errors).toEqual([]);
+    });
+
+    for (const [name, fail] of [
+        ['a 503', (route) => route.fulfill({status: 503, body: 'restarting'})],
+        ['a dropped connection', (route) => route.abort('connectionfailed')],
+    ]) {
+        test(`${name} that clears up keeps the overlay`, async ({page}) => {
+            await logIn(page);
+            await startJapanese(page);
+            let failures = 0;
+            await page.route('**/Yomitan/Query', (route) => {
+                failures += 1;
+                return failures <= 2 ? fail(route) : route.continue();
+            });
+
+            await setVideoTime(page, 30.2);
+            await expect.poll(() => failures).toBeGreaterThan(2);
+            await expect.poll(() => overlayWords(page).then((words) => words.length)).toBeGreaterThan(0);
+            await expectTrack(page, {state: 'active', index: TRACKS.japanese});
+        });
+    }
+
+    test('a query the server refuses is not retried', async ({page}) => {
+        await logIn(page);
+        await startJapanese(page);
+        let requests = 0;
+        await page.route('**/Yomitan/Query', (route) => {
+            requests += 1;
+            return route.fulfill({status: 400, body: '{}'});
+        });
+
+        await setVideoTime(page, 30.2);
+        await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
+        expect(requests).toBe(1);
     });
 
     test('a Stream.js 404 leaves Jellyfin\'s subtitles showing', async ({page}) => {
