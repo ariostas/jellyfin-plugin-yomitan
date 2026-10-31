@@ -421,8 +421,11 @@ test.describe('queries', () => {
         expect((await (await send('{}')).json()).error.code).toBe('invalid_request');
         const tooMany = JSON.stringify({operations: Array.from({length: 65}, () => ({op: 'getDictionaryInfo'}))});
         expect((await (await send(tooMany)).json()).error.code).toBe('too_many_operations');
-        const huge = await send(JSON.stringify({operations: [], padding: 'x'.repeat(5 * 1024 * 1024)}));
-        expect(huge.status).toBe(413);
+        // The server answers before the body has all arrived, and closes the connection, which can beat the answer here.
+        await expect(async () => {
+            const huge = await send(JSON.stringify({operations: [], padding: 'x'.repeat(5 * 1024 * 1024)}));
+            expect(huge.status).toBe(413);
+        }).toPass({timeout: 10_000});
     });
 
     test('work with a form content type too', async () => {

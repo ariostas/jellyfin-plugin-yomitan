@@ -194,7 +194,9 @@ async function showLinePlain(page, {at}) {
 test.describe('a mouse that is only passing', () => {
     // The last word on this line is about 290 px wide, so the slower two are on it for far longer than the delay.
     for (const speed of [1500, 600, 200]) {
-        test(`crossing the line at ${speed} px/s does not pause`, async ({page}) => {
+        test(`crossing the line at ${speed} px/s does not pause`, async ({page, browserName}) => {
+            // Headless WPE delivers moves up to 300 ms apart, and a gap longer than the delay is a mouse at rest.
+            test.skip(browserName === 'webkit' && speed < 500, 'Playwright cannot move a mouse this slowly in WebKit.');
             await start(page);
             await countPlayState(page);
             const first = await wordCentre(page, '昨日');

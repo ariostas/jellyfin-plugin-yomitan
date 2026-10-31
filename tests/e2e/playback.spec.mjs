@@ -192,6 +192,8 @@ test.describe('the overlay', () => {
         await logIn(page);
         await play(page, movies.TypesetSample, {subtitleStreamIndex: 2, minimumTime: 1});
         await expectTrack(page, {state: 'active', language: 'jpn', codec: 'ass'});
+        // Paused, because some of these lines are short, and a slow seek would land after them.
+        await page.evaluate(() => document.querySelector('video.htmlvideoplayer').pause());
 
         for (const [time, lines, signs] of [
             [6.5, '彼女はケーキを 食べられなかった\nえっ、本当に？', ''],
@@ -204,11 +206,9 @@ test.describe('the overlay', () => {
             [29, '朝の話だよね', ''],
         ]) {
             await setVideoTime(page, time);
-            // session.time, because a browser that cannot play Matroska gets a stream that starts over on every seek.
             await page.waitForFunction((target) => {
-                const {session} = window.__yomitanJellyfin.playback;
                 const video = document.querySelector('video.htmlvideoplayer');
-                return video && session && !video.seeking && Math.abs(session.time - target) < 0.6;
+                return !video.seeking && Math.abs(video.currentTime - target) < 0.6;
             }, time);
             await expect.poll(() => overlayText(page)).toBe(lines);
             expect(await signText(page)).toBe(signs);
