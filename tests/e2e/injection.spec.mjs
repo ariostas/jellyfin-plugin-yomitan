@@ -32,6 +32,9 @@ test('a client that accepts compression still gets the tag, with an honest Conte
 });
 
 test('HEAD is not touched, and GET grows by exactly the tag', async () => {
+    // File Transformation answers HEAD itself, with a Content-Length of 0.
+    test.skip(server.withFileTransformation, 'Needs the stock HEAD response');
+
     const head = await rawRequest('/web/', {method: 'HEAD'});
     const get = await rawRequest('/web/');
     const [[tag]] = tags(get.text);
@@ -63,13 +66,17 @@ test('revalidation works and cannot pin a copy from before the plugin was instal
     expect(current.body.length).toBe(0);
     expect(current.headers.etag).toBe(headers.etag);
 
-    // What a browser sends for a copy cached before installation: the stock file's validators.
+    // What a browser sends for a copy cached before installation. These go separately because a server
+    // ignores If-Modified-Since when If-None-Match is present.
     const stock = await rawRequest('/web/', {method: 'HEAD'});
-    const stale = await rawRequest('/web/', {
-        headers: {'If-None-Match': stock.headers.etag, 'If-Modified-Since': stock.headers['last-modified']},
-    });
-    expect(stale.status).toBe(200);
-    expect(tags(stale.text).length).toBe(1);
+    for (const validator of [
+        {'If-None-Match': stock.headers.etag},
+        {'If-Modified-Since': new Date().toUTCString()},
+    ]) {
+        const stale = await rawRequest('/web/', {headers: validator});
+        expect(stale.status).toBe(200);
+        expect(tags(stale.text).length).toBe(1);
+    }
 });
 
 test('a range request gets the whole document', async () => {
