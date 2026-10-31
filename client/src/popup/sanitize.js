@@ -28,8 +28,9 @@ const URL_ATTRIBUTES = new Set(['src', 'srcset', 'srcdoc', 'href', 'xlink:href',
  * @returns {boolean} Whether it is sure not to load anything.
  */
 export function isSafeCssValue(value, property) {
-    // The browser has already resolved escapes in anything it parsed. It keeps them in custom properties and in values
-    // holding a var(), where u\72l( would otherwise get past this check and become url( later.
+    // The browser has already resolved escapes in anything it parsed, but keeps them in custom properties and in values
+    // holding a var(). The list below would refuse u\72l( as a function called 72l, but nothing here should have to
+    // reason about what an escape turns into later.
     if (value.includes('\\')) {
         return false;
     }

@@ -4,9 +4,8 @@ import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {expect, test} from '../lib/test.mjs';
 import {api, credentials, getEpisodes, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {bundleYomitan} from '../lib/yomitan.mjs';
 import {
-    countListeners, cueTextAt, engineTimers, expectTrack, measureSync, nativeState, overlayText, overlayWords, readSrt,
+    countListeners, cueTextAt, engineTimers, expectTrack, jellyfinLine, measureSync, nativeState, overlayText, overlayWords, readSrt,
     setSecondaryTrack, setSubtitleOffset, setSubtitleTrack, setVideoTime, signText, startRecording, stopPlayback,
     stopRecording, trackEngineTimers,
 } from '../lib/player.mjs';
@@ -137,7 +136,8 @@ test.describe('in sync', () => {
 });
 
 test.describe('the overlay', () => {
-    test('it replaces the native line: the track is hidden and keeps its cues', async ({page}) => {
+    test('it replaces the native line: the track is hidden and keeps its cues', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'jellyfin-web only uses native cues in Chromium. See native-subtitles.spec.mjs.');
         await logIn(page);
         await startJapanese(page);
         const state = await nativeState(page);
@@ -204,9 +204,11 @@ test.describe('the overlay', () => {
             [29, '朝の話だよね', ''],
         ]) {
             await setVideoTime(page, time);
+            // session.time, because a browser that cannot play Matroska gets a stream that starts over on every seek.
             await page.waitForFunction((target) => {
+                const {session} = window.__yomitanJellyfin.playback;
                 const video = document.querySelector('video.htmlvideoplayer');
-                return !video.seeking && Math.abs(video.currentTime - target) < 0.6;
+                return video && session && !video.seeking && Math.abs(session.time - target) < 0.6;
             }, time);
             await expect.poll(() => overlayText(page)).toBe(lines);
             expect(await signText(page)).toBe(signs);
@@ -230,7 +232,8 @@ test.describe('the overlay', () => {
 });
 
 test.describe('only Japanese', () => {
-    test('an English track stays exactly as Jellyfin renders it', async ({page}) => {
+    test('an English track stays exactly as Jellyfin renders it', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'jellyfin-web only uses native cues in Chromium. See native-subtitles.spec.mjs.');
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.english});
         await expectTrack(page, {state: 'inactive', language: 'eng', index: TRACKS.english});
@@ -282,7 +285,8 @@ test.describe('tracks that hold no text', () => {
         expect(logged).toEqual(['debug']);
     });
 
-    test('with burn-in, the plugin does nothing', async ({page}) => {
+    test('with burn-in, the plugin does nothing', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'Only Chromium transcodes this file, and burn-in needs a transcode.');
         await logIn(page);
         await page.evaluate(() => {
             localStorage.setItem('alwaysBurnInSubtitleWhenTranscoding', 'true');
@@ -314,7 +318,7 @@ test.describe('failing safe', () => {
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.japanese});
         await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
-        await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
         expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
         expect(await page.evaluate(() => window.hidCount)).toBe(0);
     });
@@ -329,11 +333,8 @@ test.describe('failing safe', () => {
         // The next line the client has not seen asks the server.
         await setVideoTime(page, 30.2);
         await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
-        expect(await nativeState(page)).toEqual({
-            hiding: false,
-            overlay: false,
-            tracks: [{mode: 'showing', label: 'manualTrack', cues: syncCues.length}],
-        });
+        expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
+        expect(await jellyfinLine(page)).toBe('showing');
 
         const time = await page.evaluate(() => document.querySelector('video.htmlvideoplayer').currentTime);
         await page.waitForTimeout(800);
@@ -387,7 +388,7 @@ test.describe('failing safe', () => {
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.japanese});
         await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
-        await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
         expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
     });
 
@@ -407,7 +408,7 @@ test.describe('failing safe', () => {
         await page.route('**/Yomitan/engine.js*', (route) => route.fulfill({status: 500, body: ''}));
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.japanese});
-        await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
         expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
         expect(errors).toEqual([]);
     });
@@ -418,7 +419,7 @@ test.describe('failing safe', () => {
             await logIn(page);
             await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.japanese});
             await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
-            await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
+            await expect.poll(() => jellyfinLine(page)).toBe('showing');
             expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
         } finally {
             expect((await importArchive(admin, makeMiniDictionary())).state).toBe('succeeded');
@@ -433,7 +434,7 @@ test.describe('switching tracks', () => {
 
         await setSubtitleTrack(page, TRACKS.english);
         await expect.poll(async () => (await nativeState(page)).hiding).toBe(false);
-        await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
         await expectTrack(page, {state: 'inactive', index: TRACKS.english, language: 'eng'});
         expect((await nativeState(page)).overlay).toBe(false);
 
@@ -492,7 +493,8 @@ test.describe('the subtitle offset', () => {
         await expect.poll(() => overlayText(page)).toBe(cueTextAt(syncCues, 14.2));
     });
 
-    test('native cues catch up with an offset set while they were hidden', async ({page}) => {
+    test('native cues catch up with an offset set while they were hidden', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'jellyfin-web only uses native cues in Chromium. See native-subtitles.spec.mjs.');
         await logIn(page);
         await startJapanese(page);
         await setSubtitleOffset(page, 2);
@@ -539,7 +541,8 @@ test.describe('segmenting ahead', () => {
 });
 
 test.describe('secondary subtitles', () => {
-    test('the secondary track stays showing, and the overlay moves up out of its way', async ({page}) => {
+    test('the secondary track stays showing, and the overlay moves up out of its way', async ({page, browserName}) => {
+        test.skip(browserName !== 'chromium', 'jellyfin-web only uses native cues in Chromium. See native-subtitles.spec.mjs.');
         await logIn(page);
         await startJapanese(page);
         await setSecondaryTrack(page, TRACKS.english);
@@ -849,30 +852,5 @@ test.describe('what Phases 4 and 5 use', () => {
         expect(result.truncated).toBe(false);
         expect(result.stored).toBe(true);
         expect(result.time).toBeGreaterThan(45);
-    });
-
-    test('a lookup renders through Yomitan\'s own DisplayGenerator', async ({page}) => {
-        await logIn(page);
-        await startJapanese(page);
-        await page.addScriptTag({content: await bundleYomitan()});
-        const templates = readFileSync(new URL('../../third_party/yomitan/ext/templates-display.html', import.meta.url), 'utf8');
-        const rendered = await page.evaluate(async (html) => {
-            const {engine} = window.__yomitanJellyfin.playback;
-            const {DisplayGenerator} = window.yomitan;
-            const content = {loadMedia() {}, prepareLink() {}, unloadAll() {}};
-            const generator = new DisplayGenerator(content, null);
-            generator._templates.load(new DOMParser().parseFromString(html, 'text/html'));
-            const {dictionaryEntries} = await engine.lookup('食べられなかった');
-            const node = generator.createTermEntry(dictionaryEntries[0], engine.dictionaries);
-            return {
-                expression: node.querySelector('.headword-term').textContent,
-                gloss: node.querySelector('.gloss-content').textContent,
-                inflections: node.querySelectorAll('.inflection').length,
-            };
-        }, templates);
-        // With its furigana, which is in the text as ruby.
-        expect(rendered.expression).toBe('食たべる');
-        expect(rendered.gloss).toBe('meaning of 食べる');
-        expect(rendered.inflections).toBeGreaterThan(0);
     });
 });

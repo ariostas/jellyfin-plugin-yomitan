@@ -34,11 +34,11 @@ export const miniDictionaryTitle = 'Mini';
  * @param {object} [options]
  * @param {string} [options.title]
  * @param {string[][]} [options.extraTerms] More rows, in the form of `terms`.
- * @param {string} [options.longTerm] A term to give enough senses that the popup has to scroll.
+ * @param {string|string[]} [options.longTerm] Terms to give enough senses that the popup has to scroll.
  * @returns {Buffer} A format 3 dictionary archive.
  */
 export function makeMiniDictionary({title = miniDictionaryTitle, extraTerms = [], longTerm} = {}) {
-    const senses = (term) => (term === longTerm ?
+    const senses = (term) => ([longTerm].flat().includes(term) ?
         Array.from({length: 80}, (_, index) => `sense ${index} of ${term}`) :
         [`meaning of ${term}`]);
     const rows = [...terms, ...extraTerms].map(([term, reading, partOfSpeech, rules = ''], index) => (

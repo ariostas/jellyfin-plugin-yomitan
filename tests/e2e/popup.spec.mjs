@@ -17,7 +17,7 @@ let admin;
 test.beforeAll(async () => {
     admin = await clientFor(credentials.username, credentials.password);
     await deleteAll(admin);
-    expect((await importArchive(admin, makeMiniDictionary({longTerm: '飲む'}))).state).toBe('succeeded');
+    expect((await importArchive(admin, makeMiniDictionary({longTerm: ['飲む', '看板']}))).state).toBe('succeeded');
     const rich = await importArchive(admin, makeRichDictionary());
     expect(rich.error).toBeNull();
 });
@@ -295,15 +295,24 @@ async function layout(page) {
         const host = document.querySelector('.yomitan-popup');
         const frame = host?.shadowRoot.querySelector('.popup-frame');
         const box = rect(frame);
-        const corners = box && [
-            [box.left + 4, box.top + 4], [box.right - 4, box.top + 4], [box.left + 4, box.bottom - 4], [box.right - 4, box.bottom - 4],
-        ].map(([x, y]) => document.elementFromPoint(x, y) === host);
+        // A grid over the whole popup, since a line drawn over it would only cross the middle.
+        const grid = [];
+        for (let column = 0; box && column <= 6; ++column) {
+            for (let row = 0; row <= 10; ++row) {
+                const x = box.left + 4 + (box.right - box.left - 8) * column / 6;
+                const y = box.top + 4 + (box.bottom - box.top - 8) * row / 10;
+                grid.push(document.elementFromPoint(x, y) === host);
+            }
+        }
+
+        const active = document.querySelector('.yomitan-active');
         return {
             viewport: {width: innerWidth, height: innerHeight},
             popup: box,
-            onTop: corners,
-            word: rect(document.querySelector('.yomitan-active')),
+            onTop: grid.every(Boolean),
+            word: rect(active),
             line: rect(document.querySelector('.yomitan-lines')),
+            block: rect(active?.closest('.yomitan-lines, .yomitan-signs')),
             controls: rect(document.querySelector('.videoOsdBottom:not(.hide):not(.videoOsdBottom-hidden) .osdControls')),
             scrolled: [scrollX, scrollY, document.documentElement.scrollWidth - innerWidth],
         };
@@ -319,14 +328,15 @@ async function screenshot(page, testInfo, name) {
 
 const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-function expectGoodLayout({viewport, popup, onTop, word, line, controls, scrolled}, label) {
+function expectGoodLayout({viewport, popup, onTop, word, line, block, controls, scrolled}, label) {
     expect(popup, label).not.toBeNull();
     expect(popup.left, label).toBeGreaterThanOrEqual(0);
     expect(popup.top, label).toBeGreaterThanOrEqual(0);
     expect(popup.right, label).toBeLessThanOrEqual(viewport.width);
     expect(popup.bottom, label).toBeLessThanOrEqual(viewport.height);
-    expect(onTop, `${label}: nothing is drawn over it`).toEqual([true, true, true, true]);
+    expect(onTop, `${label}: nothing is drawn over it`).toBe(true);
     expect(overlaps(popup, word), `${label}: it does not cover the word`).toBe(false);
+    expect(overlaps(popup, block), `${label}: it does not cover the sentence`).toBe(false);
     expect(word.top, label).toBeGreaterThanOrEqual(0);
     expect(word.bottom, label).toBeLessThanOrEqual(viewport.height);
     if (controls) {
@@ -392,6 +402,33 @@ test.describe('where it goes', () => {
         expect((await popupState(page)).side).toBe('below');
         expectGoodLayout(await layout(page), 'sign');
         await screenshot(page, testInfo, 'sign');
+    });
+
+    test('a tall popup goes over a sign at the top of the screen, and the sign stays under it', async ({page}) => {
+        await page.setViewportSize({width: 640, height: 360});
+        await logIn(page);
+        const {TypesetSample: item} = await getMovies();
+        await play(page, item, {subtitleStreamIndex: 2, minimumTime: 1});
+        await expectTrack(page, {state: 'active', language: 'jpn', codec: 'ass'});
+        await waitForOsdHidden(page);
+        await setVideoTime(page, 14);
+        await page.waitForFunction(() => document.querySelector('.yomitan-signs .yomitan-word') && document.querySelector('.yomitan-lines .yomitan-word'));
+        await openWord(page, '看板');
+        await expectPopup(page, '看板');
+        const sign = await page.evaluate(() => {
+            const {left, right, top, bottom} = document.querySelector('.yomitan-signs').getBoundingClientRect();
+            return {left, right, top, bottom};
+        });
+        const {box} = await popupState(page);
+        expect(overlaps(box, sign), 'the sign really is under it').toBe(true);
+        expectGoodLayout(await layout(page), 'over a sign');
+    });
+
+    test('with several lines up, it stays off all of them', async ({page}) => {
+        await start(page, LINES.twoLines);
+        await openWord(page, '映画');
+        await expectPopup(page, '映画');
+        expectGoodLayout(await layout(page), 'several lines');
     });
 
     test('a line that wraps still leaves the word uncovered', async ({page}) => {

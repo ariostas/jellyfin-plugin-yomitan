@@ -2,7 +2,7 @@
 // script or reach out. Nothing in the page is a content security policy: the proof is that nothing happened.
 import {createServer} from 'node:http';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
-import {hostileTitle, makeHostileDictionary, rowsPastTheSchema} from '../lib/hostile-dictionary.mjs';
+import {hostileStyles, hostileTitle, LIVE_ATTACKS, makeHostileDictionary, rowsPastTheSchema} from '../lib/hostile-dictionary.mjs';
 import {credentials, logIn, server} from '../lib/jellyfin.mjs';
 import {expectPopup, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
@@ -84,6 +84,20 @@ test('the canary hears a real request, so its silence below means something', as
     await expect.poll(() => [...canaryHits].sort()).toEqual(['/control-css.png', '/control-image.png']);
 });
 
+test('applied as it came, the stylesheet really does reach out, so stopping it means something', async ({page}) => {
+    await openTrap(page);
+    expect(canaryHits).toEqual([]);
+    await page.evaluate((css) => {
+        const style = document.createElement('style');
+        style.textContent = css;
+        document.querySelector('.yomitan-popup').shadowRoot.append(style);
+    // Without the rule that hides the popup, which would leave nothing to load anything for.
+    }, hostileStyles(canaryUrl).replace(/:host \{[^}]*\}/, ''));
+    const heard = () => canaryHits.map((path) => path.slice(1));
+    await expect.poll(() => LIVE_ATTACKS.filter((name) => !heard().includes(name))).toEqual([]);
+    console.log(`the raw stylesheet made ${canaryHits.length} requests: ${[...heard()].sort().join(' ')}`);
+});
+
 test('a hostile dictionary shows as text, runs nothing and contacts nothing', async ({page}) => {
     const outside = watchRequests(page);
     await openTrap(page);
@@ -121,7 +135,7 @@ test('its stylesheet keeps what is harmless and loses all the rest', async ({pag
     expect(styles.image).toBe('none');
     expect(styles.hostDisplay).toBe('block');
     expect(styles.bodyDisplay).toBe('block');
-    for (const forbidden of [canaryUrl, 'url(', 'image-set', '@font-face', '@import', '\\72']) {
+    for (const forbidden of [canaryUrl, 'url(', 'image-set(', '@font-face', '@import', '\\72']) {
         expect(styles.css).not.toContain(forbidden);
     }
 

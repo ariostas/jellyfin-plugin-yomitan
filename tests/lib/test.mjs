@@ -13,11 +13,23 @@ export {expect} from '@playwright/test';
 export const IGNORED_PAGE_ERRORS = [
     {
         pattern: /ReferenceError: e is not defined[\s\S]*blob:/,
-        why: 'JASSUB\'s worker in Firefox, jellyfin-web\'s ASS renderer. It happens with the plugin blocked, and subtitles still draw',
+        why: 'JASSUB\'s worker in Firefox, jellyfin-web\'s ASS renderer. It happens with the plugin blocked, and it still draws',
+    },
+    {
+        pattern: /Can't find variable: e\b/,
+        why: 'the same workers in WebKit, for JASSUB and for image subtitles. It happens with the plugin blocked',
     },
     {
         pattern: /can't access property "length", t is undefined/,
         why: 'jellyfin-web\'s home screen in Firefox, when a reload cuts off its requests. No frame of the plugin\'s is involved',
+    },
+    {
+        pattern: /XMLHttpRequest cannot load [\s\S]*node_modules\.axios\.bundle/,
+        why: 'jellyfin-web\'s home screen in WebKit, whose requests are cut off when a test goes straight to the player',
+    },
+    {
+        pattern: /Loading chunk \d+ failed/,
+        why: 'jellyfin-web lazily loading a card script for the home screen while the page moves on to the player',
     },
 ];
 

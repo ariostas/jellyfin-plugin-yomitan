@@ -10,28 +10,49 @@ export const PNG = Buffer.from(
 
 const script = (name) => `<img src=x onerror="window.pwned='${name}'"><script>window.pwned='${name}'</script>`;
 
+/**
+ * Each attack has an element of its own, which it certainly matches inside the dictionary's scope, so a rule that does
+ * nothing here cannot look like a rule that was stopped. The control test in hostile.spec.mjs applies them all raw.
+ */
+const STYLE_ATTACKS = (canary) => ({
+    background: `background-image: url("${canary}/css-background.png");`,
+    cursor: `cursor: url("${canary}/css-cursor.png"), auto;`,
+    'list-image': `display: list-item; list-style-image: url("${canary}/css-list.png");`,
+    border: `border: 8px solid; border-image: url("${canary}/css-border.png") 30;`,
+    mask: `mask-image: url("${canary}/css-mask.png");`,
+    filter: `filter: url("${canary}/css-filter.svg#a");`,
+    'image-set': `background-image: image-set("${canary}/css-image-set.png" 1x);`,
+    'webkit-image-set': `background-image: -webkit-image-set(url("${canary}/css-webkit-image-set.png") 1x);`,
+    escaped: `background-image: u\\72l("${canary}/css-escaped.png");`,
+    custom: `--evil: url("${canary}/css-custom.png"); background-image: var(--evil);`,
+    'custom-escaped': `--evil: u\\72l("${canary}/css-custom-escaped.png"); background-image: var(--evil);`,
+    fallback: `background-image: var(--nothing, url("${canary}/css-fallback.png"));`,
+    shorthand: `background: var(--nothing, url("${canary}/css-shorthand.png")) no-repeat;`,
+    'escaped-fallback': `background-image: var(--nothing, u\\72l("${canary}/css-escaped-fallback.png"));`,
+});
+
+/**
+ * Attacks that do fetch, once applied. The rest depend on the engine, so they only have to be silent. @font-face is one of
+ * those: browsers ignore it in a shadow root, which is the only thing keeping it out if this file's rule ever went.
+ */
+export const LIVE_ATTACKS = [
+    'css-background.png', 'css-image-set.png', 'css-escaped.png', 'css-custom.png', 'css-custom-escaped.png',
+    'css-fallback.png', 'css-shorthand.png', 'css-escaped-fallback.png', 'css-media.png', 'css-supports.png',
+    'css-import-url.css', 'css-import-string.css', 'css-before.png',
+];
+
 export function hostileStyles(canary) {
+    const attacks = Object.entries(STYLE_ATTACKS(canary)).map(([name, declarations]) => `[data-sc-probe="${name}"] { ${declarations} }`);
     return `
 @import url("${canary}/css-import-url.css");
 @import "${canary}/css-import-string.css";
 @font-face { font-family: evil; src: url("${canary}/css-font.woff2"); }
-.gloss-content { font-family: evil; background-image: url("${canary}/css-background.png"); color: rgb(1, 2, 3); }
-.definition-item {
-    cursor: url("${canary}/css-cursor.png"), auto;
-    list-style-image: url("${canary}/css-list.png");
-    border-image: url("${canary}/css-border.png") 30;
-    mask-image: url("${canary}/css-mask.png");
-    filter: url("${canary}/css-filter.svg#a");
-}
-.gloss-content::before { content: url("${canary}/css-content.png"); }
-.headword { background: image-set("${canary}/css-image-set.png" 1x); }
-.headword-term { background: -webkit-image-set(url("${canary}/css-webkit-image-set.png") 1x); }
-.tag { background: u\\72l("${canary}/css-escaped.png"); }
-.entry { --evil: u\\72l("${canary}/css-custom-escaped.png"); background: var(--evil); }
-.entry-body { --evil-plain: url("${canary}/css-custom.png"); background-image: var(--evil-plain); }
-.definition-list { background: var(--nothing, url("${canary}/css-fallback.png")); }
-@media screen { .gloss-content { background-image: url("${canary}/css-media.png"); outline: 1px solid rgb(4, 5, 6); } }
-@supports (display: grid) { .headword-list { background-image: url("${canary}/css-supports.png"); } }
+[data-sc-probe="font"] { font-family: evil; }
+.gloss-content { color: rgb(1, 2, 3); }
+${attacks.join('\n')}
+[data-sc-probe="before"]::before { content: url("${canary}/css-before.png"); }
+@media screen { [data-sc-probe="media"] { background-image: url("${canary}/css-media.png"); } .gloss-content { outline: 1px solid rgb(4, 5, 6); } }
+@supports (display: grid) { [data-sc-probe="supports"] { background-image: url("${canary}/css-supports.png"); } }
 [data-sc-cover] { position: fixed; inset: 0; z-index: 99999; background: rgb(255, 0, 0); }
 :host { display: none !important; }
 :root { background: url("${canary}/css-root.png"); }
@@ -41,6 +62,24 @@ html, body { display: none; background: url("${canary}/css-body.png"); }
 `;
 }
 
+const STYLE_PROBES = (canary) => [
+    ...Object.keys(STYLE_ATTACKS(canary)),
+    'font', 'before', 'media', 'supports',
+];
+
+const INLINE_ATTACKS = (canary) => ({
+    background: `url("${canary}/inline-background.png")`,
+    backgroundColor: `url("${canary}/inline-background-color.png")`,
+    cursor: `url("${canary}/inline-cursor.png"), auto`,
+    clipPath: `url("${canary}/inline-clip.svg#a")`,
+    listStyleType: `url("${canary}/inline-list.png")`,
+    textShadow: `url("${canary}/inline-shadow.png")`,
+    textEmphasis: `url("${canary}/inline-emphasis.png")`,
+    color: `rgb(7, 8, 9); background: url("${canary}/inline-smuggled.png")`,
+    borderColor: `url("${canary}/inline-border.png")`,
+    fontSize: `calc(1px + url("${canary}/inline-size.png"))`,
+});
+
 function hostileGlossary(canary) {
     return [
         script('glossary string'),
@@ -48,17 +87,15 @@ function hostileGlossary(canary) {
             type: 'structured-content',
             content: [
                 script('structured string'),
+                ...STYLE_PROBES(canary).map((probe) => ({tag: 'div', data: {probe}, content: `probe ${probe}`})),
+                ...Object.entries(INLINE_ATTACKS(canary)).map(([property, value]) => ({
+                    tag: 'div',
+                    style: {[property]: value},
+                    content: `inline ${property}`,
+                })),
                 {
                     tag: 'div',
-                    style: {
-                        background: `url("${canary}/inline-background.png")`,
-                        cursor: `url("${canary}/inline-cursor.png"), auto`,
-                        clipPath: `url("${canary}/inline-clip.svg#a")`,
-                        listStyleType: `url("${canary}/inline-list.png")`,
-                        textShadow: `url("${canary}/inline-shadow.png")`,
-                        color: `rgb(7, 8, 9); background: url("${canary}/inline-smuggled.png")`,
-                        backgroundColor: 'rgb(9, 8, 7)',
-                    },
+                    style: {backgroundColor: 'rgb(9, 8, 7)'},
                     data: {cover: 'yes', onclick: "window.pwned='dataset'", 'x"><script>': 'y'},
                     title: '"><img src=x onerror="window.pwned=\'title\'">',
                     lang: '"><script>window.pwned=1</script>',

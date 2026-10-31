@@ -1,7 +1,8 @@
 // The popup on real dictionaries: JMdict and KANJIDIC, with real frequency and pitch data. These are not in the
 // repository, so this takes a directory in YOMITAN_REAL_DICTS holding JMdict_english.zip and KANJIDIC_english.zip, and if
-// present the two lists tests/lib/real-meta-dictionaries.mjs describes.
-import {readFileSync} from 'node:fs';
+// present the two lists tests/lib/real-meta-dictionaries.mjs describes, and jitendex-yomitan.zip from jitendex.org
+// (CC BY-SA 4.0), which is the real dictionary here with images and a stylesheet of its own.
+import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, logIn} from '../lib/jellyfin.mjs';
@@ -26,7 +27,12 @@ test.beforeAll(async () => {
         expect(job.error).toBeNull();
     }
 
-    extras = {frequency: makeFrequencyDictionary(directory), pitch: makePitchDictionary(directory)};
+    const jitendex = join(directory, 'jitendex-yomitan.zip');
+    extras = {
+        frequency: makeFrequencyDictionary(directory),
+        pitch: makePitchDictionary(directory),
+        jitendex: existsSync(jitendex) ? readFileSync(jitendex) : null,
+    };
     for (const archive of Object.values(extras)) {
         if (archive) {
             const job = await importArchive(admin, archive);
@@ -106,6 +112,65 @@ for (const [name, viewport, line, word, term] of [
         await page.screenshot({path: testInfo.outputPath(`${name}.png`)});
     });
 }
+
+test.describe('a real dictionary with images and styles', () => {
+    test.skip(() => !existsSync(join(directory ?? '', 'jitendex-yomitan.zip')), 'Needs jitendex-yomitan.zip.');
+
+    test('its photograph and its SVG glyph load from the media API, as blobs', async ({page}, testInfo) => {
+        const failures = [];
+        page.on('response', (response) => {
+            if (response.url().includes('/Yomitan/Media') && !response.ok()) {
+                failures.push(response.url());
+            }
+        });
+        await start(page, LINES.twoLines);
+        await open(page, '炬燵');
+        await expectPopup(page, '炬燵');
+        const photos = () => page.evaluate(() => {
+            const {shadowRoot} = document.querySelector('.yomitan-popup');
+            return [...shadowRoot.querySelectorAll('img.gloss-image')].map(({src, naturalWidth, complete}) => ({
+                blob: src.startsWith('blob:'),
+                loaded: complete && naturalWidth > 0,
+            }));
+        });
+        await expect.poll(async () => (await photos()).some(({blob, loaded}) => blob && loaded), {timeout: 10_000}).toBe(true);
+        expect((await photos()).every(({blob}) => blob)).toBe(true);
+        await page.screenshot({path: testInfo.outputPath('photograph.png')});
+
+        await open(page, '兎');
+        await expectPopup(page, '兎');
+        await expect.poll(async () => (await photos()).some(({loaded}) => loaded), {timeout: 10_000}).toBe(true);
+        expect(failures).toEqual([]);
+        await page.screenshot({path: testInfo.outputPath('glyph.png')});
+    });
+
+    test('its stylesheet survives the sanitizer whole, and applies', async ({page}, testInfo) => {
+        await start(page, LINES.coffee);
+        await open(page, '彼女');
+        await expectPopup(page, '彼女');
+        const result = await page.evaluate(() => {
+            const count = (rules) => [...rules].reduce((total, rule) => total + 1 + (rule.cssRules ? count(rule.cssRules) : 0), 0);
+            const {engine} = window.__yomitanJellyfin.playback;
+            const {styles} = engine.dictionaries.find(({title}) => title.startsWith('Jitendex'));
+            const original = new CSSStyleSheet();
+            original.replaceSync(styles);
+
+            const {shadowRoot: root} = document.querySelector('.yomitan-popup');
+            const [scope] = root.querySelectorAll('style')[1].sheet.cssRules;
+            const sense = root.querySelector('[data-dictionary^="Jitendex"] li[data-sc-content="sense"]');
+            return {
+                source: count(original.cssRules),
+                kept: count(scope.cssRules),
+                dropped: root.querySelectorAll('style')[1].textContent.includes('url('),
+                padding: sense ? getComputedStyle(sense).paddingLeft : null,
+            };
+        });
+        console.log('Jitendex styles.css through the sanitizer:', result);
+        expect(result.kept).toBe(result.source);
+        expect(result.padding).not.toBe('0px');
+        await page.screenshot({path: testInfo.outputPath('styled.png')});
+    });
+});
 
 function percentile(sorted, fraction) {
     return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];

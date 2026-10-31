@@ -26,7 +26,6 @@ export class PointerInput {
         this._waitingFor = null;
         this._waitTimer = 0;
         this._graceTimer = 0;
-        this._lastPosition = null;
         /** The word under the mouse when someone closed its popup, which must not reopen until the mouse leaves it. */
         this._dismissed = null;
         this._swallowUntil = 0;
@@ -57,18 +56,14 @@ export class PointerInput {
         return target === this._lookup.host;
     }
 
-    _onPointerMove = ({pointerType, clientX: x, clientY: y, target}) => {
-        if (pointerType === 'touch' || this._openedBy === 'touch') {
-            return;
+    /**
+     * Only a move counts. A browser sends pointerover when a line appears under a mouse at rest, and that must not pause
+     * the video, which is why this does not listen for it.
+     */
+    _onPointerMove = ({pointerType, target}) => {
+        if (pointerType !== 'touch' && this._openedBy !== 'touch') {
+            this._onHover(this._overlay.wordAt(target), this._isInPopup(target));
         }
-
-        // Browsers send a move when the page changes under a mouse that has not moved, as when a line appears there.
-        if (this._lastPosition?.x === x && this._lastPosition.y === y) {
-            return;
-        }
-
-        this._lastPosition = {x, y};
-        this._onHover(this._overlay.wordAt(target), this._isInPopup(target));
     };
 
     _onPointerLeave = ({pointerType}) => {

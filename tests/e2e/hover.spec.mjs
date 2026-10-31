@@ -192,17 +192,39 @@ async function showLinePlain(page, {at}) {
 }
 
 test.describe('a mouse that is only passing', () => {
-    test('crossing the line quickly does not pause', async ({page}) => {
+    for (const speed of [1500, 600]) {
+        test(`crossing the line at ${speed} px/s does not pause`, async ({page}) => {
+            await start(page);
+            await countPlayState(page);
+            const first = await wordCentre(page, '昨日');
+            const last = await wordCentre(page, '行きませんでした');
+            const y = first.y;
+            const startX = first.left - 60;
+            const endX = last.left + last.width + 60;
+            await page.mouse.move(startX, y - 90);
+            await page.mouse.move(startX, y);
+
+            const began = Date.now();
+            for (let x = startX; x < endX; x = startX + (Date.now() - began) / 1000 * speed) {
+                await page.mouse.move(x, y);
+                await page.waitForTimeout(8);
+            }
+
+            const measured = Math.round((endX - startX) / ((Date.now() - began) / 1000));
+            await page.mouse.move(endX, y - 90);
+            await page.waitForTimeout(HOVER_DELAY * 2);
+            console.log(`crossed ${Math.round(endX - startX)} px at ${measured} px/s`);
+            expect(await playStateCounts(page)).toEqual({pause: 0, play: 0});
+            expect((await popupState(page)).open).toBe(false);
+        });
+    }
+
+    test('stopping on a word after a fast approach does pause', async ({page}) => {
         await start(page);
-        await countPlayState(page);
-        const first = await wordCentre(page, '昨日');
-        const last = await wordCentre(page, '行きませんでした');
-        // About 1500 px/s, which is a person going somewhere else.
-        await page.mouse.move(first.x - 100, first.y - 80);
-        await page.mouse.move(last.x + 100, last.y + 80, {steps: 12});
-        await page.waitForTimeout(HOVER_DELAY * 2);
-        expect(await playStateCounts(page)).toEqual({pause: 0, play: 0});
-        expect((await popupState(page)).open).toBe(false);
+        const word = await wordCentre(page, '学校');
+        await page.mouse.move(word.x - 300, word.y);
+        await page.mouse.move(word.x, word.y, {steps: 6});
+        await expectPopup(page, '学校');
     });
 
     test('going for the OSD through the line does not pause', async ({page}) => {

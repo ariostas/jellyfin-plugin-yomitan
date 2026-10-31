@@ -8,7 +8,7 @@ conversation is in [api.md](api.md).
 | File | Loaded | Size | Holds |
 | --- | --- | --- | --- |
 | `client.js` | On every page, by the injected tag | About 2 KB | `src/main.js`, `src/player-hook.js`, `src/settings.js` |
-| `engine.js` | When a video first starts, unless the plugin is turned off | ENGINE_SIZE | Everything else |
+| `engine.js` | When a video first starts, unless the plugin is turned off | About 385 KB, or 107 KB as Jellyfin compresses it | Everything else |
 
 `client/build.mjs` builds both. The engine's content hash is compiled into the loader, and the server computes the same
 hash, so `engine.js?v=<hash>` is cached for good and a new build is a new URL. Both are public, like the rest of
@@ -92,6 +92,10 @@ the same listeners as with the plugin blocked outright, which `tests/e2e/setting
 for both, describing whichever reported last, and `video.src` is a `blob:` URL under hls.js. `playbackManager` is not a
 global, but its events pass through the global `Events`, so `player-hook.js` wraps `Events.trigger` until it sees one,
 then unwraps it. From there each tab asks its own `playbackManager`, which is what jellyfin-web's UI does.
+
+**Which subtitles it draws.** jellyfin-web draws text as native cues in Chromium, and in the custom `.videoSubtitles`
+element in Firefox and Safari or if the user sets Subtitle styling to Custom. ASS goes through JASSUB everywhere.
+`NativeSubtitles` hides all three, and `tests/e2e/native-subtitles.spec.mjs` checks them in real playback.
 
 **Track changes.** jellyfin-web has no event for them, so `controller.js` polls every 250 ms during video playback. The
 key is item, media source, stream index and delivery method. Any change disposes the session and starts a new one.
@@ -217,8 +221,8 @@ on the way. A word has to stay under the mouse for 200 ms, which a mouse on its 
 at 1500 px/s spends about 30 ms on a word, and `hover.spec.mjs` checks that this does not pause. It applies to swapping
 too, so a diagonal from a word to the popup does not swap on a neighbour.
 
-**A resting mouse does nothing.** Browsers send a move when the page changes under a mouse that has not moved, as when a
-line appears there. Those events have the same coordinates as the last, and are ignored.
+**A resting mouse does nothing.** Hover goes by `pointermove`, never `pointerover`. A browser sends `pointerover` when a
+line appears under a mouse that has not moved, and listening for that would pause the film whenever a line landed on it.
 
 **After someone closes a popup, its word stays closed** until the mouse has left it, so a nudge after pressing space does
 not pause again.
@@ -283,9 +287,9 @@ popup and a server that counts requests.
 | `position: fixed` could cover the page | The popup's frame has `contain: layout paint`, so it is the containing block, and it clips |
 
 The check is a list of functions that are allowed, not of those that are not, because the ways to load something keep
-growing. A backslash anywhere in a value is refused: the browser resolves escapes in what it parses, but keeps them in
-custom properties and in values holding a `var()`, where `u\72l(` would turn into `url(` too late to see. `attr()` is only
-allowed in `content`.
+growing. A backslash anywhere in a value is refused as well: the browser resolves escapes in what it parses, but keeps them
+in custom properties and in values holding a `var()`. The list would already refuse `u\72l(`, as a function called `72l`, so
+this is a second guard, and it saves reasoning about what an escape turns into. `attr()` is only allowed in `content`.
 
 A link to a web page stays, with `target=_blank` and `rel=noreferrer noopener`, and does nothing until someone follows it.
 A link to another entry opens that entry in the popup.
@@ -296,9 +300,9 @@ A popup loads 32 images at most.
 
 ### Where it goes
 
-`placement.js` puts it above the word if the entry fits there or there is more room, and otherwise below, clear of the OSD
-if it can be. It never covers the word, and long entries scroll inside it. It moves on `resize`, which covers turning a
-phone.
+`placement.js` puts it above the lines if the entry fits there or there is more room, and otherwise below, clear of the OSD
+if it can be. It goes by the whole block of lines and not just the word, so the sentence stays readable, and it never
+covers the word. Long entries scroll inside it. It moves on `resize`, which covers turning a phone.
 
 ## For Phase 5
 

@@ -59,6 +59,7 @@ const STYLE_ID = 'yomitan-popup-style';
 const HOST_CSS = `
 .yomitan-popup {
     position: absolute;
+    z-index: 2;
     display: block;
     pointer-events: auto;
 }
@@ -123,7 +124,8 @@ export class Popup {
     }
 
     /**
-     * Puts it next to the word. It measures while hidden, so nothing shows in the wrong place.
+     * Puts it next to the word: beside it across the screen, and clear of all the lines around it up and down, so the
+     * whole sentence stays readable. It measures while hidden, so nothing shows in the wrong place.
      * @param {HTMLElement} anchor
      * @param {{bottom: number}} insets
      */
@@ -136,7 +138,9 @@ export class Popup {
         host.style.top = '0';
         frame.style.height = 'auto';
         const contentHeight = scroll.scrollHeight + 2;
-        const placement = placePopup({viewport, anchor: anchor.getBoundingClientRect(), contentHeight, avoidBottom: bottom});
+        const {left, right} = anchor.getBoundingClientRect();
+        const {top, bottom: end} = anchor.closest('.yomitan-lines, .yomitan-signs').getBoundingClientRect();
+        const placement = placePopup({viewport, anchor: {left, right, top, bottom: end}, contentHeight, avoidBottom: bottom});
         const height = Math.min(contentHeight, placement.maxHeight);
         host.style.left = `${placement.left}px`;
         host.style.top = `${placement.top}px`;
