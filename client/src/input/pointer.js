@@ -4,6 +4,9 @@
 /** A tap's mouse and click events follow its touch by about this much, and are over by then. */
 const TAP_SETTLE_MS = 700;
 
+/** How far a mouse can drift and still count as resting, in pixels, since a hand is never quite still. */
+const REST_RADIUS = 8;
+
 /** @param {{cueId: number, index: number}|null} a @param {{cueId: number, index: number}|null} b */
 function sameWord(a, b) {
     return a?.cueId === b?.cueId && a?.index === b?.index;
@@ -24,6 +27,7 @@ export class PointerInput {
         /** Who opened what is showing. A touch stays until the next tap, whatever the mouse does. */
         this._openedBy = null;
         this._waitingFor = null;
+        this._waitPosition = null;
         this._waitTimer = 0;
         this._graceTimer = 0;
         /** The word under the mouse when someone closed its popup, which must not reopen until the mouse leaves it. */
@@ -60,19 +64,24 @@ export class PointerInput {
      * Only a move counts. A browser sends pointerover when a line appears under a mouse at rest, and that must not pause
      * the video, which is why this does not listen for it.
      */
-    _onPointerMove = ({pointerType, target}) => {
+    _onPointerMove = ({pointerType, target, clientX: x, clientY: y}) => {
         if (pointerType !== 'touch' && this._openedBy !== 'touch') {
-            this._onHover(this._overlay.wordAt(target), this._isInPopup(target));
+            this._onHover(this._overlay.wordAt(target), this._isInPopup(target), {x, y});
         }
     };
 
     _onPointerLeave = ({pointerType}) => {
         if (pointerType !== 'touch' && this._openedBy !== 'touch') {
-            this._onHover(null, false);
+            this._onHover(null, false, null);
         }
     };
 
-    _onHover(word, inPopup) {
+    /** @returns {boolean} Whether the mouse has gone far enough to mean it is still on its way somewhere. */
+    _hasMoved({x, y}) {
+        return Math.hypot(x - this._waitPosition.x, y - this._waitPosition.y) > REST_RADIUS;
+    }
+
+    _onHover(word, inPopup, position) {
         const onCurrent = word !== null && sameWord(word, this._lookup.current);
         if (inPopup || onCurrent) {
             this._stopWaiting();
@@ -93,9 +102,12 @@ export class PointerInput {
 
         clearTimeout(this._graceTimer);
         this._graceTimer = 0;
-        if (!sameWord(word, this._waitingFor)) {
+        // The wait starts over on every real move, and not just on a new word: a long word can be 300 px wide, and a mouse
+        // crossing it is on it for longer than the delay.
+        if (!sameWord(word, this._waitingFor) || this._hasMoved(position)) {
             this._stopWaiting();
             this._waitingFor = word;
+            this._waitPosition = position;
             this._waitTimer = setTimeout(() => {
                 this._waitingFor = null;
                 this._open(word, 'mouse');

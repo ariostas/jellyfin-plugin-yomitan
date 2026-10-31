@@ -192,7 +192,8 @@ async function showLinePlain(page, {at}) {
 }
 
 test.describe('a mouse that is only passing', () => {
-    for (const speed of [1500, 600]) {
+    // The last word on this line is about 290 px wide, so the slower two are on it for far longer than the delay.
+    for (const speed of [1500, 600, 200]) {
         test(`crossing the line at ${speed} px/s does not pause`, async ({page}) => {
             await start(page);
             await countPlayState(page);
@@ -218,6 +219,20 @@ test.describe('a mouse that is only passing', () => {
             expect((await popupState(page)).open).toBe(false);
         });
     }
+
+    test('a hand that trembles on a word is still at rest there', async ({page}) => {
+        await start(page);
+        const {x, y} = await wordCentre(page, '学校');
+        await page.mouse.move(x, y, {steps: 3});
+        const shaking = (async () => {
+            for (let step = 0; step < 30; ++step) {
+                await page.mouse.move(x + (step % 2 ? 3 : -3), y + (step % 3) - 1);
+                await page.waitForTimeout(20);
+            }
+        })();
+        await expectPopup(page, '学校');
+        await shaking;
+    });
 
     test('stopping on a word after a fast approach does pause', async ({page}) => {
         await start(page);

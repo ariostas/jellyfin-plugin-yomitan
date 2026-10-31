@@ -76,7 +76,7 @@ settings.addEventListener('change', ({detail: {name, value}}) => {});
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `true` | Off means the engine does not load, and playback is what jellyfin-web does alone. Takes effect at once |
-| `hoverDelayMs` | 200 | How long the mouse rests on a word before anything happens |
+| `hoverDelayMs` | 200 | How long the mouse has to rest on a word before anything happens |
 | `hoverGraceMs` | 300 | How long the popup survives the mouse leaving it and the word |
 
 **`enabled` is on by default, against [PLAN.md](../PLAN.md)'s decision 4.** There is no UI to turn it on until Phase 6,
@@ -208,7 +208,7 @@ Which kind of input it is comes from each event, not from the device, since a la
 
 | What happens | Result |
 | --- | --- |
-| Rests on a word for `hoverDelayMs` | Pauses a playing video, then opens the word |
+| Comes to rest on a word for `hoverDelayMs` | Pauses a playing video, then opens the word |
 | Moves to another word, and rests | Swaps the popup. The video stays paused |
 | Crosses from the word to the popup | Nothing, as long as it takes less than `hoverGraceMs` |
 | Leaves both for `hoverGraceMs` | Closes, and resumes if the plugin paused |
@@ -217,9 +217,10 @@ Which kind of input it is comes from each event, not from the device, since a la
 | Anything in a gap between words | jellyfin-web's |
 
 **The hover delay is what keeps the OSD usable.** Going for the controls means crossing the line, so nothing may happen
-on the way. A word has to stay under the mouse for 200 ms, which a mouse on its way somewhere else does not do. A mouse
-at 1500 px/s spends about 30 ms on a word, and `hover.spec.mjs` checks that this does not pause. It applies to swapping
-too, so a diagonal from a word to the popup does not swap on a neighbour.
+on the way. The mouse has to come to rest on a word for 200 ms: the wait starts over each time it moves more than 8 px, and
+not just on a new word, since a long word can be 300 px wide and a mouse crossing it stays on it for longer than the delay.
+`hover.spec.mjs` crosses at 1500, 600 and 200 px/s, and checks that a hand's small tremble still opens a word. It applies to
+swapping too, so a diagonal from a word to the popup does not swap on a neighbour.
 
 **A resting mouse does nothing.** Hover goes by `pointermove`, never `pointerover`. A browser sends `pointerover` when a
 line appears under a mouse that has not moved, and listening for that would pause the film whenever a line landed on it.
