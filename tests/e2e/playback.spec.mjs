@@ -295,13 +295,20 @@ test.describe('tracks that hold no text', () => {
 });
 
 test.describe('failing safe', () => {
-    test('a query that fails from the start leaves Jellyfin\'s subtitles showing', async ({page}) => {
+    test('a query that fails from the start leaves Jellyfin\'s subtitles showing, without so much as a flicker', async ({page}) => {
+        await page.addInitScript(() => {
+            window.hidCount = 0;
+            new MutationObserver(() => {
+                window.hidCount += document.documentElement.hasAttribute('data-yomitan-hides-subtitles') ? 1 : 0;
+            }).observe(document, {subtree: true, attributes: true, attributeFilter: ['data-yomitan-hides-subtitles']});
+        });
         await page.route('**/Yomitan/Query', (route) => route.fulfill({status: 500, body: 'broken'}));
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.japanese});
         await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
         await expect.poll(async () => (await nativeState(page)).tracks[0]?.mode).toBe('showing');
         expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
+        expect(await page.evaluate(() => window.hidCount)).toBe(0);
     });
 
     test('a query that starts failing in mid-playback gives the native line back', async ({page}) => {
@@ -635,11 +642,17 @@ test.describe('two tabs on one deviceId', () => {
         const sessions = await api(`/Sessions?deviceId=${encodeURIComponent(deviceId)}`);
         expect(sessions.length).toBe(1);
 
-        for (let check = 0; check < 3; check += 1) {
-            expect(await overlayText(first)).toMatch(/^(一話目.*|)$/);
-            expect(await overlayText(second)).toMatch(/^(二話目.*|)$/);
-            await first.waitForTimeout(700);
+        // Each tab reports to that one session in turn, so give a wrong reading time to show. Lines of each episode
+        // are on screen 90% of the time, so a blank tab has fallen back, which counts as a failure here.
+        for (let check = 0; check < 6; check += 1) {
+            await expect.poll(() => overlayText(first)).toContain('一話目');
+            await expect.poll(() => overlayText(second)).toContain('二話目');
+            await first.waitForTimeout(1500);
         }
+
+        const stateOf = (page) => page.evaluate(() => window.__yomitanJellyfin.playback.session?.state);
+        expect(await stateOf(first)).toBe('active');
+        expect(await stateOf(second)).toBe('active');
 
         const itemOf = (page) => page.evaluate(() => {
             const manager = window.__yomitanJellyfin.playback.playbackManager;

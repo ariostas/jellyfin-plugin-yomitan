@@ -32,7 +32,11 @@ export function cueTextAt(cues, time) {
 
 /** Waits for the plugin to settle on a track, and asserts which one, since a wrong track makes every later check moot. */
 export async function expectTrack(page, {state, language, codec, index}) {
-    await page.waitForFunction((expected) => window.__yomitanJellyfin.playback?.session?.state === expected, state, {timeout: 20_000});
+    // With an index, wait for that track's session: right after a switch, the old one is still there.
+    await page.waitForFunction(([expected, stream]) => {
+        const session = window.__yomitanJellyfin.playback?.session;
+        return session?.state === expected && (stream === undefined || session.stream.Index === stream);
+    }, [state, index], {timeout: 20_000});
     const stream = await page.evaluate(() => {
         const {Language, Codec, Index} = window.__yomitanJellyfin.playback.session.stream;
         return {language: Language, codec: Codec, index: Index};

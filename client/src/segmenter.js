@@ -141,7 +141,8 @@ const WEAK_INFLECTION_LENGTH = 4;
 // つ counts on its own, as in １つ, where other counters are words the dictionary has.
 const NUMBER = /^[0-9０-９]+つ?/;
 const KATAKANA_RUN = /^[\u30A1-\u30FA\u30FCｦ-ﾝ]+/;
-const PARTICLE = /[はがをにでとものへかねよ]/;
+// A kanji word plus one of these is that word and that particle. か and に are left out: 確か and 特に are words.
+const KANJI_WORD_TAIL = /[はがをでとものへねよ]/;
 // Inside a span these suggest several words. か, の and よ are too often just part of one, as in 確かに.
 const INNER_PARTICLE = /[はがをにでと]/;
 // These never sit inside a word on their own, while に and の do, as in 気に入る and 日の出.
@@ -226,10 +227,9 @@ export function candidatesFrom(dictionaryEntries) {
     return candidates;
 }
 
-function hasParticleTail(prefix, last, priority) {
+function hasParticleTail(prefix, last) {
     if (HAS_KANJI.test(prefix)) {
-        // Priority words in に are adverbs in their own right: 確かに, 特に, 既に.
-        return PARTICLE.test(last) && !(priority && last === 'に');
+        return KANJI_WORD_TAIL.test(last);
     }
 
     return SENTENCE_ENDING.test(last) || (prefix.length >= 2 && CASE_ENDING.test(last));
@@ -284,7 +284,7 @@ async function splitRun(run, scan) {
         for (const [matchLength, {cost, term, reading, priority}] of candidates) {
             const end = start + matchLength;
             const prefix = run.slice(start, end - 1);
-            const tail = hasParticleTail(prefix, run[end - 1], priority) && candidates.has(matchLength - 1);
+            const tail = hasParticleTail(prefix, run[end - 1]) && candidates.has(matchLength - 1);
             const phrase = splitsAroundParticle(run, start, end, allCandidates, priority);
             consider(start, end, cost + (tail ? COST.particleTail : 0) + (phrase ? COST.phrase : 0), {term, reading});
         }

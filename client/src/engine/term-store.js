@@ -17,22 +17,6 @@ const MAX_SPLITS = 4;
 const MAX_TERMS = 50_000;
 const MAX_ROWS = 30_000;
 
-function addRow(map, key, row) {
-    const rows = map.get(key);
-    if (!rows) {
-        map.set(key, [row]);
-        return true;
-    }
-
-    if (rows.some(({id}) => id === row.id)) {
-        return false;
-    }
-
-    rows.push(row);
-    rows.sort((a, b) => a.id - b.id);
-    return true;
-}
-
 export class TermStore {
     /** @param {(terms: string[]) => Promise<{rows: object[], truncated: boolean}>} fetchTerms Sends one request. */
     constructor(fetchTerms) {
@@ -53,15 +37,20 @@ export class TermStore {
     /** Drops everything. Row ids mean nothing once a dictionary has been replaced. */
     clear() {
         this._known = new Set();
+        this._rowIds = new Set();
         this._byTerm = new Map();
         this._byReading = new Map();
-        this._rowCount = 0;
         this.generation = (this.generation ?? 0) + 1;
+    }
+
+    /** @returns {number} */
+    get rowCount() {
+        return this._rowIds.size;
     }
 
     /** @returns {{terms: number, rows: number}} */
     get size() {
-        return {terms: this._known.size, rows: this._rowCount};
+        return {terms: this._known.size, rows: this.rowCount};
     }
 
     /**
@@ -89,12 +78,7 @@ export class TermStore {
             return this.closed ? false : this.ensure(terms);
         }
 
-        for (const row of rows) {
-            const added = addRow(this._byTerm, row.term, row);
-            addRow(this._byReading, row.reading, row);
-            this._rowCount += added ? 1 : 0;
-        }
-
+        this._addRows(rows);
         if (!truncated) {
             for (const term of terms) {
                 this._known.add(term);
@@ -113,12 +97,40 @@ export class TermStore {
         return first && second;
     }
 
+    _addRows(rows) {
+        const changed = new Set();
+        for (const row of rows) {
+            if (!this._rowIds.has(row.id)) {
+                this._rowIds.add(row.id);
+                changed.add(this._index(this._byTerm, row.term, row));
+                changed.add(this._index(this._byReading, row.reading, row));
+            }
+        }
+
+        // The server's order within a term is by id, and this is what read() replays.
+        for (const list of changed) {
+            list.sort((a, b) => a.id - b.id);
+        }
+    }
+
+    _index(map, key, row) {
+        const list = map.get(key);
+        if (list) {
+            list.push(row);
+            return list;
+        }
+
+        const created = [row];
+        map.set(key, created);
+        return created;
+    }
+
     /**
      * Starts over if the store is full. Only between lines, never during one: what a line fetched is about to be read,
      * and losing it would turn every window of the line into a request of its own.
      */
     makeRoom() {
-        if (this._known.size > MAX_TERMS || this._rowCount > MAX_ROWS) {
+        if (this._known.size > MAX_TERMS || this.rowCount > MAX_ROWS) {
             // Not a change of dictionaries, so a request in flight stays valid.
             const {generation} = this;
             this.clear();

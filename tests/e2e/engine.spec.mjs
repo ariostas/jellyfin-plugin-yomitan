@@ -112,18 +112,47 @@ test('a line costs one request the first time and none after', async ({page}) =>
     const second = await countQueries(page, () => page.evaluate((line) => window.segmenter.segment(line), text));
     expect(second.requests.length).toBe(0);
     expect(second.result).toEqual(first.result);
+    expect(await page.evaluate((line) => window.segmenter.peek(line)?.length, text)).toBe(first.result.length);
 });
 
 test('a full store starts over between lines, so a line never loses the rows it just asked for', async ({page}) => {
     await openEngine(page);
     const requests = await page.evaluate(async () => {
         const terms = window.engine._terms;
-        terms._rowCount = 1_000_000;
+        const fetchTerms = terms._fetchTerms;
+
+        // As if this very fetch had filled the store.
+        terms._fetchTerms = async (list) => {
+            const result = await fetchTerms(list);
+            for (let id = -1; id > -40_000; id -= 1) {
+                terms._rowIds.add(id);
+            }
+
+            return result;
+        };
         const before = window.engine.requests;
         await window.segmenter.segment('友達と映画を見ました');
         return window.engine.requests - before;
     });
     expect(requests).toBe(1);
+});
+
+test('segmenting works in slices, so the page gets a turn', async ({page}) => {
+    await openEngine(page);
+    const turns = await page.evaluate(async () => {
+        let count = 0;
+        const {setTimeout: original} = window;
+        window.setTimeout = function (callback, delay) {
+            count += new Error('where').stack.includes('engine.js') ? 1 : 0;
+            return original.call(this, callback, delay);
+        };
+
+        const text = '猫が窓の外を見ている子供たちが公園で遊んでいる友達と映画を見ました電車が遅れています';
+        await window.segmenter.segment(text);
+        window.setTimeout = original;
+        return count;
+    });
+    expect(turns).toBeGreaterThanOrEqual(2);
 });
 
 test('a lookup after segmenting reuses the rows', async ({page}) => {

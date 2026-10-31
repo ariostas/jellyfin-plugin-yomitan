@@ -8,7 +8,7 @@ conversation is in [api.md](api.md).
 | File | Loaded | Size | Holds |
 | --- | --- | --- | --- |
 | `client.js` | On every page, by the injected tag | About 1 KB | `src/main.js`, `src/player-hook.js` |
-| `engine.js` | When a video first starts | About 240 KB, 44 KB compressed | Everything else |
+| `engine.js` | When a video first starts | About 240 KB, or 68 KB as Jellyfin compresses it | Everything else |
 
 `client/build.mjs` builds both. The engine's content hash is compiled into the loader, and the server computes the same
 hash, so `engine.js?v=<hash>` is cached for good and a new build is a new URL. Both are public, like the rest of
@@ -41,6 +41,7 @@ engine/
   remote-db.js          DictionaryDatabase over HTTP
   term-store.js         batches term lookups, and answers as the server would
   query-client.js       POST /Yomitan/Query
+  yield.js              gives the page a turn during long work
   language-descriptors.js  Japanese only
 ```
 
@@ -123,18 +124,20 @@ evidence: a name, a rare word, hiragana that only matches a kanji word's reading
 particle. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way.
 
-It is a one-word-at-a-time model, so it cannot use grammar. See the known issues in
-`tests/fixtures/segmentation-corpus.mjs`.
+It is a one-word-at-a-time model, so it cannot use grammar. It got 24 of 28 unseen lines of real subtitles exactly right
+(fixed by hand, in advance). The misses are in `tests/fixtures/segmentation-corpus.mjs`, marked `known`.
 
 **Round trips.** A new line takes one request, however long. The engine first runs the Translator against a database that
 only records what it asks for, sends all of that in one `findTermsBulk`, and then runs the Translator for real against
 `TermStore`, which answers from those rows. A second request only happens if a dictionary redirects a form to another
-headword. A line seen before takes none. `session.js` segments the current cue and the next two.
+headword. A line seen before takes none. `session.js` segments the current cue and the next two. The Translator's awaits
+only yield to microtasks, so `yield.js` cuts this work into slices of about 8 ms, to keep the page responsive.
 
-**Caches.** `TermStore` keeps rows by term and reading, and `Segmenter` keeps results by text. Every request also carries
-`getDictionaryInfo`, in the same read transaction, so a replaced dictionary is noticed by the response that first uses
-it, and everything goes. A `truncated` answer is split and retried, then used for the moment but never stored. Both
-caches go when the playback ends.
+**Caches.** `TermStore` keeps rows by term and reading, up to 30,000 rows, and starts over between lines when it is
+full. `Segmenter` keeps results by text for as long as the track lasts. Every request also carries `getDictionaryInfo`,
+in the same read transaction, so a replaced dictionary is noticed by the response that first uses it, and everything
+goes. A `truncated` answer is split and retried, then used for the moment but never stored. Both caches go when the
+playback ends.
 
 ## For Phases 4 and 5
 

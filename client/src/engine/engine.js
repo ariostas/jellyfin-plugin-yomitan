@@ -4,6 +4,7 @@ import {Translator} from '../../../third_party/yomitan/ext/js/language/translato
 import {QueryClient} from './query-client.js';
 import {RecordingDb, RemoteDb} from './remote-db.js';
 import {TermStore} from './term-store.js';
+import {yieldIfBusy} from './yield.js';
 
 export class NoDictionariesError extends Error {
     constructor() {
@@ -121,6 +122,7 @@ export class Engine extends EventTarget {
             this._recording.terms.clear();
             for (const window of new Set(windows)) {
                 await this._planner.findTerms('simple', window, this._options);
+                await yieldIfBusy();
             }
 
             const terms = [...this._recording.terms];
@@ -139,6 +141,7 @@ export class Engine extends EventTarget {
      */
     async scan(window) {
         const {dictionaryEntries} = await this._translator.findTerms('simple', window, this._options);
+        await yieldIfBusy();
         return dictionaryEntries;
     }
 
