@@ -149,7 +149,8 @@ test.describe('engine.js', () => {
     test('compression reaches it, and the loader stays small', async () => {
         const {body, headers} = await rawRequest('/Yomitan/engine.js', {headers: {'Accept-Encoding': 'br'}});
         expect(headers['content-encoding']).toBe('br');
-        expect(body.length).toBeLessThan(100 * 1024);
+        // 107 KB as of Phase 4, which added Yomitan's display code, templates and CSS. Only a video ever loads this.
+        expect(body.length).toBeLessThan(125 * 1024);
 
         const {text} = await rawRequest('/web/');
         const script = new URL(tags(text)[0][1], `${server.url}/web/`);
