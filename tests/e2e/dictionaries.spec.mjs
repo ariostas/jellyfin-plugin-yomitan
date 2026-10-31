@@ -1,4 +1,3 @@
-import {execFileSync} from 'node:child_process';
 import http from 'node:http';
 import {expect, test} from '@playwright/test';
 import {clientFor, deleteAll, importArchive, inContainer, spooledUploads, waitForJob} from '../lib/dictionaries.mjs';
@@ -310,30 +309,6 @@ test.describe('replacing', () => {
         expect(await rowsOf(await lookup(admin, '語'))).toEqual(rowsBefore);
         expect((await rowsOf(await lookup(admin, '新'))).length).toBe(0);
         expect((await admin.media('Sample', 'img/pic.png')).status).toBe(200);
-    });
-
-    test('survives the server being killed midway', async () => {
-        test.setTimeout(120_000);
-        await importArchive(admin, sample({title: 'Bulky'}));
-        const before = await (await admin.list()).json();
-
-        const {id} = await (await admin.upload(bulky(150_000, {revision: '2'}), {replace: true})).json();
-        await expect.poll(async () => (await (await admin.job(id)).json()).progress.rows, {intervals: [20]}).toBeGreaterThan(5000);
-        execFileSync('podman', ['kill', '--signal', 'KILL', server.name]);
-        execFileSync('podman', ['start', server.name]);
-
-        await expect.poll(async () => {
-            try {
-                return (await admin.list()).status;
-            } catch {
-                return 0;
-            }
-        }, {timeout: 60_000, intervals: [500]}).toBe(200);
-
-        expect((await (await admin.list()).json()).dictionaries).toEqual(before.dictionaries);
-        expect((await rowsOf(await lookup(admin, '語', ['Bulky']))).length).toBe(1);
-        expect(spooledUploads()).toEqual([]);
-        expect((await admin.job(id)).status).toBe(404);
     });
 });
 

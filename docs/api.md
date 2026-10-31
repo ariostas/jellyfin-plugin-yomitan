@@ -110,9 +110,9 @@ Content-Type: application/zip
 HTTP/1.1 202 Accepted
 
 {
-  "id": "ef5efb77-e106-4868-804b-dc328b0495cc",
+  "id": "41ea813c-c4be-4e30-88bc-c8ce5df4aca7",
   "kind": "import",
-  "state": "queued",
+  "state": "running",
   "title": null,
   "replace": false,
   "phase": null,
@@ -124,8 +124,8 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T14:32:07.4870733+00:00",
-  "startedAt": null,
+  "createdAt": "2026-10-31T15:21:55.1018083+00:00",
+  "startedAt": "2026-10-31T15:21:55.1066917+00:00",
   "finishedAt": null
 }
 ```
@@ -144,7 +144,7 @@ Content-Type: application/zip
 HTTP/1.1 202 Accepted
 
 {
-  "id": "df8954c6-09c0-4455-8a03-a5c9f02f0ed0",
+  "id": "4f2737b3-69f7-4539-8825-4f65f0718567",
   "kind": "import",
   "state": "queued",
   "title": null,
@@ -158,7 +158,7 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T14:32:07.5982096+00:00",
+  "createdAt": "2026-10-31T15:21:55.3434249+00:00",
   "startedAt": null,
   "finishedAt": null
 }
@@ -197,7 +197,7 @@ GET /Yomitan/Jobs/{id}
 HTTP/1.1 200 OK
 
 {
-  "id": "ef5efb77-e106-4868-804b-dc328b0495cc",
+  "id": "41ea813c-c4be-4e30-88bc-c8ce5df4aca7",
   "kind": "import",
   "state": "succeeded",
   "title": "Example",
@@ -239,9 +239,9 @@ HTTP/1.1 200 OK
     "sizeBytes": 0
   },
   "error": null,
-  "createdAt": "2026-10-31T14:32:07.4870733+00:00",
-  "startedAt": "2026-10-31T14:32:07.487158+00:00",
-  "finishedAt": "2026-10-31T14:32:07.5439355+00:00"
+  "createdAt": "2026-10-31T15:21:55.1018083+00:00",
+  "startedAt": "2026-10-31T15:21:55.1066917+00:00",
+  "finishedAt": "2026-10-31T15:21:55.3221828+00:00"
 }
 ```
 
@@ -256,15 +256,15 @@ GET /Yomitan/Jobs/{id}
 HTTP/1.1 200 OK
 
 {
-  "id": "df8954c6-09c0-4455-8a03-a5c9f02f0ed0",
+  "id": "4f2737b3-69f7-4539-8825-4f65f0718567",
   "kind": "import",
   "state": "failed",
-  "title": null,
+  "title": "Example",
   "replace": false,
   "phase": "reading",
   "progress": {
     "fraction": 0,
-    "bytesProcessed": 0,
+    "bytesProcessed": 97,
     "bytesTotal": 0,
     "rows": 0
   },
@@ -273,9 +273,9 @@ HTTP/1.1 200 OK
     "code": "already_exists",
     "message": "A dictionary titled \"Example\" is already installed"
   },
-  "createdAt": "2026-10-31T14:32:07.5982096+00:00",
-  "startedAt": "2026-10-31T14:32:07.5982841+00:00",
-  "finishedAt": "2026-10-31T14:32:07.6015731+00:00"
+  "createdAt": "2026-10-31T15:21:55.3434249+00:00",
+  "startedAt": "2026-10-31T15:21:55.3436036+00:00",
+  "finishedAt": "2026-10-31T15:21:55.34686+00:00"
 }
 ```
 
@@ -303,7 +303,7 @@ HTTP/1.1 200 OK
         "revision": "2026.01",
         "sequenced": true,
         "version": 3,
-        "importDate": 1793457127497,
+        "importDate": 1793460115229,
         "prefixWildcardsSupported": true,
         "counts": {
           "terms": {
@@ -456,7 +456,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 300537,
+          "id": 1,
           "sequence": 1
         },
         {
@@ -473,7 +473,7 @@ HTTP/1.1 200 OK
           ],
           "score": 0,
           "dictionary": "Example",
-          "id": 300538,
+          "id": 2,
           "sequence": 2
         }
       ],
@@ -517,7 +517,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 300537,
+          "id": 1,
           "sequence": 1
         }
       ],
@@ -539,7 +539,7 @@ HTTP/1.1 200 OK
           ],
           "score": 0,
           "dictionary": "Example",
-          "id": 300538,
+          "id": 2,
           "sequence": 2
         }
       ],
@@ -630,7 +630,7 @@ HTTP/1.1 200 OK
           "revision": "2026.01",
           "sequenced": true,
           "version": 3,
-          "importDate": 1793457127497,
+          "importDate": 1793460115229,
           "prefixWildcardsSupported": true,
           "counts": {
             "terms": {
@@ -728,7 +728,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 300537,
+          "id": 1,
           "sequence": 1
         }
       ],
@@ -772,7 +772,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 300537,
+          "id": 1,
           "sequence": 1
         }
       ],
@@ -876,7 +876,7 @@ DELETE /Yomitan/Dictionaries?title=Example
 HTTP/1.1 202 Accepted
 
 {
-  "id": "ec71d672-36e7-49c9-a510-6c1a97ca609e",
+  "id": "1ef26d6d-58e8-4cc7-bc07-903dfcb330b7",
   "kind": "delete",
   "state": "queued",
   "title": "Example",
@@ -890,7 +890,7 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T14:32:07.8375625+00:00",
+  "createdAt": "2026-10-31T15:21:55.7048593+00:00",
   "startedAt": null,
   "finishedAt": null
 }
