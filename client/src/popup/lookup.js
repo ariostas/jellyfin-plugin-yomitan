@@ -28,7 +28,6 @@ export class WordLookup extends EventTarget {
         this._apiClient = apiClient;
         this._wordsOf = wordsOf;
         this._osd = osd;
-        this._video = video;
         this._hold = new PlaybackHold(video, signal, () => this.close('play'));
         /** @type {{cueId: number, index: number}|null} The word open or opening. */
         this._current = null;
@@ -152,7 +151,8 @@ export class WordLookup extends EventTarget {
 
     _render(entries, kanji) {
         this._popup ??= new Popup(this._container);
-        this._renderer ??= new EntryRenderer(this._apiClient, (query) => this._showLinked(query));
+        // A link inside an entry opens that entry here, with the highlight staying on the word that led there.
+        this._renderer ??= new EntryRenderer(this._apiClient, (query) => this._show(query));
         const dictionaries = this._engine.dictionaries;
         this._renderer.release();
         const nodes = this._renderer.render(entries, kanji, dictionaries);
@@ -164,11 +164,6 @@ export class WordLookup extends EventTarget {
 
         this._popup.show(nodes, this._renderer.dictionaryStyles(dictionaries), anchor, this._osd());
         this._renderer.loadImages(this._popup.root);
-    }
-
-    /** A link inside an entry to another one, which keeps the highlight on the word that led there. */
-    _showLinked(query) {
-        return this._show(query);
     }
 
     _place() {
