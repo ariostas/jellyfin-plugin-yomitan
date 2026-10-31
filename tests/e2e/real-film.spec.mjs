@@ -10,10 +10,10 @@
 // Both need real dictionaries installed, from YOMITAN_REAL_DICTS.
 import {readFileSync, readdirSync} from 'node:fs';
 import {join} from 'node:path';
-import {expect, test} from '@playwright/test';
 import {openEngine} from '../lib/engine-page.mjs';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {api, credentials, logIn, play} from '../lib/jellyfin.mjs';
+import {expect, test} from '../lib/test.mjs';
 import {
     expectTrack, nativeState, parseSrt, setSubtitleTrack, setVideoTime, startRecording, stopRecording,
 } from '../lib/player.mjs';

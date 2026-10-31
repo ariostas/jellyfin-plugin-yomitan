@@ -62,10 +62,12 @@ export class PlaybackController extends EventTarget {
      * @param {object} options
      * @param {object} options.playbackManager jellyfin-web's playbackManager.
      * @param {object} options.events jellyfin-web's Events.
+     * @param {import('../settings.js').Settings} options.settings
      */
-    constructor({playbackManager, events}) {
+    constructor({playbackManager, events, settings}) {
         super();
         this.playbackManager = playbackManager;
+        this.settings = settings;
         this._events = events;
         this._view = null;
         this._timer = 0;
@@ -81,6 +83,7 @@ export class PlaybackController extends EventTarget {
     start() {
         this._events.on(this.playbackManager, 'playbackstart', this._onPlaybackStart);
         this._events.on(this.playbackManager, 'playbackstop', this._onPlaybackStop);
+        this.settings.addEventListener('change', this._onSettingChanged);
         this._follow(this.playbackManager.getCurrentPlayer());
     }
 
@@ -88,8 +91,20 @@ export class PlaybackController extends EventTarget {
 
     _onPlaybackStop = () => this._check();
 
+    _onSettingChanged = ({detail: {name, value}}) => {
+        if (name !== 'enabled') {
+            return;
+        }
+
+        if (value) {
+            this._follow(this.playbackManager.getCurrentPlayer());
+        } else {
+            this._stopFollowing({playing: true});
+        }
+    };
+
     _follow(player) {
-        if (!player || !this.playbackManager.isPlayingVideo(player)) {
+        if (!player || !this.settings.get('enabled') || !this.playbackManager.isPlayingVideo(player)) {
             return;
         }
 
@@ -111,7 +126,7 @@ export class PlaybackController extends EventTarget {
 
         const video = document.querySelector(VIDEO_SELECTOR);
         if (!playing || !video) {
-            this._stopFollowing();
+            this._stopFollowing({playing: false});
             return;
         }
 
@@ -125,7 +140,7 @@ export class PlaybackController extends EventTarget {
     };
 
     _replaceSession(playing, video) {
-        this._closeSession();
+        this._closeSession({playing: true});
         if (!playing.stream) {
             return;
         }
@@ -141,6 +156,8 @@ export class PlaybackController extends EventTarget {
         this.session = new PlaybackSession({
             playback,
             video,
+            events: this._events,
+            settings: this.settings,
             getEngine: () => {
                 this.engine ??= new Engine();
                 return this.engine;
@@ -151,17 +168,19 @@ export class PlaybackController extends EventTarget {
         this.session.start();
     }
 
-    _closeSession() {
+    /** @param {{playing: boolean}} options Whether the video lives on, so a pause of ours can be undone. */
+    _closeSession(options) {
         if (this.session) {
-            this.session.dispose();
+            this.session.dispose(options);
             this.session = null;
             this.engine?.close();
             this.dispatchEvent(new CustomEvent('session', {detail: {session: null}}));
         }
     }
 
-    _stopFollowing() {
-        this._closeSession();
+    /** @param {{playing: boolean}} options */
+    _stopFollowing(options) {
+        this._closeSession(options);
         clearInterval(this._timer);
         this._timer = 0;
         this._key = null;

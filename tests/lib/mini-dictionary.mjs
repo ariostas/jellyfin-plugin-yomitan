@@ -24,14 +24,25 @@ const terms = [
     ['開ける', 'あける', 'v1', 'v1'], ['聞く', 'きく', 'v5', 'v5'], ['走る', 'はしる', 'v5', 'v5'], ['泳ぐ', 'およぐ', 'v5', 'v5'],
     ['会う', 'あう', 'v5', 'v5'], ['話す', 'はなす', 'v5', 'v5'], ['流れる', 'ながれる', 'v1', 'v1'], ['文字', 'もじ', 'n'],
     ['行', 'ぎょう', 'n'], ['朝', 'あさ', 'n'], ['話', 'はなし', 'n'], ['重ねる', 'かさねる', 'v1', 'v1'],
+    ['本当', 'ほんとう', 'n'], ['長い', 'ながい', 'adj-i', 'adj-i'], ['一行', 'いちぎょう', 'n'], ['狭い', 'せまい', 'adj-i', 'adj-i'],
+    ['画面', 'がめん', 'n'], ['折り返す', 'おりかえす', 'v5', 'v5'], ['はず', 'はず', 'n'], ['文章', 'ぶんしょう', 'n'], ['これ', 'これ', 'n'],
 ];
 
 export const miniDictionaryTitle = 'Mini';
 
-/** @returns {Buffer} A format 3 dictionary archive. */
-export function makeMiniDictionary({title = miniDictionaryTitle, extraTerms = []} = {}) {
+/**
+ * @param {object} [options]
+ * @param {string} [options.title]
+ * @param {string[][]} [options.extraTerms] More rows, in the form of `terms`.
+ * @param {string} [options.longTerm] A term to give enough senses that the popup has to scroll.
+ * @returns {Buffer} A format 3 dictionary archive.
+ */
+export function makeMiniDictionary({title = miniDictionaryTitle, extraTerms = [], longTerm} = {}) {
+    const senses = (term) => (term === longTerm ?
+        Array.from({length: 80}, (_, index) => `sense ${index} of ${term}`) :
+        [`meaning of ${term}`]);
     const rows = [...terms, ...extraTerms].map(([term, reading, partOfSpeech, rules = ''], index) => (
-        [term, reading, partOfSpeech, rules, 0, [`meaning of ${term}`], index + 1, '']
+        [term, reading, partOfSpeech, rules, 0, senses(term), index + 1, '']
     ));
     const entry = (name, value) => ({name, data: Buffer.from(JSON.stringify(value))});
     return makeZip([

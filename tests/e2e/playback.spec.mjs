@@ -1,7 +1,7 @@
 // The whole pipeline in real playback: jellyfin-web, a real video element, and the plugin's overlay.
 import {readFileSync} from 'node:fs';
-import {expect, test} from '@playwright/test';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
+import {expect, test} from '../lib/test.mjs';
 import {api, credentials, getEpisodes, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
 import {bundleYomitan} from '../lib/yomitan.mjs';
@@ -160,15 +160,23 @@ test.describe('the overlay', () => {
         }
     });
 
-    test('it takes no input, so clicks reach the player', async ({page}) => {
+    test('only a word takes input, and everything else is jellyfin-web\'s', async ({page}) => {
         await logIn(page);
         await startJapanese(page);
-        const position = await page.evaluate(() => {
-            const {left, top, width, height} = document.querySelector('.yomitan-lines').getBoundingClientRect();
-            return {x: left + width / 2, y: top + height / 2};
+        await setVideoTime(page, 6.2);
+        await page.waitForFunction(() => document.querySelector('.yomitan-word')?.textContent === 'は');
+        const hits = await page.evaluate(() => {
+            const {left, top, right, bottom} = document.querySelector('.yomitan-word').getBoundingClientRect();
+            const at = (x, y) => document.elementFromPoint(x, y).className;
+            return {
+                word: at((left + right) / 2, (top + bottom) / 2),
+                beside: at(left - 30, (top + bottom) / 2),
+                above: at((left + right) / 2, top - 30),
+            };
         });
-        const target = await page.evaluate(({x, y}) => document.elementFromPoint(x, y).className, position);
-        expect(target).not.toContain('yomitan');
+        expect(hits.word).toContain('yomitan-word');
+        expect(hits.beside).not.toContain('yomitan');
+        expect(hits.above).not.toContain('yomitan');
     });
 
     test('a line break in a cue survives, and text stays selectable as Japanese', async ({page}) => {

@@ -5,12 +5,16 @@
 // The order in start() is what keeps failure safe. Jellyfin's subtitles are hidden only once the track's text, the
 // dictionary API and at least one dictionary have all worked, and any later failure puts them back.
 import {NoDictionariesError} from '../engine/engine.js';
+import {PointerInput} from '../input/pointer.js';
+import {Layer} from '../layer.js';
 import {Overlay} from '../overlay.js';
+import {WordLookup} from '../popup/lookup.js';
 import {Segmenter} from '../segmenter.js';
 import {isJapaneseTrack} from '../subtitles/language.js';
 import {loadCues, trackContent} from '../subtitles/source.js';
 import {CueTimeline} from '../subtitles/timeline.js';
 import {NativeSubtitles} from './native-subtitles.js';
+import {measureOsd} from './osd.js';
 
 /** Upcoming cues to segment ahead of time. Two covers quick exchanges. */
 const PRESEGMENT_CUES = 2;
@@ -22,19 +26,25 @@ export class PlaybackSession {
      * @param {object} options
      * @param {object} options.playback Item, media source, stream and subtitle offset for this tab. See controller.js.
      * @param {HTMLVideoElement} options.video
+     * @param {object} options.events jellyfin-web's Events.
+     * @param {import('../settings.js').Settings} options.settings
      * @param {() => import('../engine/engine.js').Engine} options.getEngine
      * @param {(type: string, detail?: object) => void} options.emit Sends an event to the controller's listeners.
      */
-    constructor({playback, video, getEngine, emit}) {
+    constructor({playback, video, events, settings, getEngine, emit}) {
         this._playback = playback;
         this._video = video;
+        this._events = events;
+        this._settings = settings;
         this._getEngine = getEngine;
         this._emit = emit;
         this._abort = new AbortController();
         /** Everything that drives the overlay. Ends with it, which can be long before the session is disposed. */
         this._driving = null;
         this._native = new NativeSubtitles(video, () => playback.subtitleOffset());
+        this._layer = null;
         this._overlay = null;
+        this._input = null;
         this._timeline = null;
         this._segmenter = null;
         this._shownKey = null;
@@ -44,6 +54,8 @@ export class PlaybackSession {
 
         /** `idle`, `active` or `inactive`. Inactive means Jellyfin's subtitles are showing. */
         this.state = 'idle';
+        /** @type {WordLookup|null} What shows a word's popup. Null unless the state is `active`. */
+        this.lookup = null;
         /** @type {readonly import('../subtitles/timeline.js').Cue[]} */
         this.cues = [];
         /** Word lists by cue id, for the cues on screen. */
@@ -112,7 +124,20 @@ export class PlaybackSession {
         this._engine = engine;
         this._segmenter = new Segmenter(engine);
         this._timeline = new CueTimeline(cues);
-        this._overlay = new Overlay(this._video.parentElement);
+        this._layer = new Layer(signal);
+        this._overlay = new Overlay(this._layer.element);
+        this.lookup = new WordLookup({
+            engine,
+            overlay: this._overlay,
+            container: this._layer.element,
+            video: this._video,
+            apiClient: this._playback.source.apiClient,
+            wordsOf: (cueId) => this.words.get(cueId),
+            osd: measureOsd,
+            signal,
+        });
+        this._input = new PointerInput({lookup: this.lookup, overlay: this._overlay, settings: this._settings, signal});
+        this._events.on(document, 'SHOW_VIDEO_OSD', this._onOsdToggled);
         this._native.hide();
         this.state = 'active';
 
@@ -133,7 +158,27 @@ export class PlaybackSession {
         if (this.state === 'active') {
             this._native.enforce();
             this._overlay.setBelowSecondary(this._playback.hasSecondarySubtitles());
+            this._followOsd();
             this._render();
+        }
+    }
+
+    /** The first event comes before jellyfin-web has shown the OSD, so this looks a frame later. */
+    _onOsdToggled = () => {
+        requestAnimationFrame(() => {
+            if (this.state === 'active') {
+                this._followOsd();
+            }
+        });
+    };
+
+    /**
+     * Moves the lines clear of the OSD, unless a word is in use: the OSD comes and goes by itself, and the word under the
+     * mouse must not move away from it.
+     */
+    _followOsd() {
+        if (!this.lookup.current && !this._input.busy) {
+            this._overlay.setInsets(measureOsd());
         }
     }
 
@@ -245,11 +290,16 @@ export class PlaybackSession {
             console.warn('[yomitan] subtitles stay as they are:', error);
         }
 
-        this._tearDown();
+        this._tearDown({playing: true});
         this._setInactive();
     }
 
-    _tearDown() {
+    /** @param {{playing: boolean}} options Whether the video lives on, so a pause of ours can be undone. */
+    _tearDown(options) {
+        this._events.off(document, 'SHOW_VIDEO_OSD', this._onOsdToggled);
+        this.lookup?.destroy(options);
+        this.lookup = null;
+        this._input = null;
         this._driving?.abort();
         cancelAnimationFrame(this._animationFrame);
         this._animationFrame = 0;
@@ -257,13 +307,16 @@ export class PlaybackSession {
         this._native.restore();
         this._overlay?.destroy();
         this._overlay = null;
+        this._layer?.destroy();
+        this._layer = null;
         this.cues = [];
         this.words = new Map();
     }
 
-    dispose() {
+    /** @param {{playing: boolean}} options Whether the video lives on, so a pause of ours can be undone. */
+    dispose(options) {
         this._abort.abort();
-        this._tearDown();
+        this._tearDown(options);
         this.state = 'idle';
     }
 }

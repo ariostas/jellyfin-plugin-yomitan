@@ -59,6 +59,12 @@ podman run --rm \
         cp /fixtures/untagged-japanese.srt "$tracks/TracksSample (2026).unlabelled.srt"
         cp /fixtures/untagged-chinese.srt "$tracks/TracksSample (2026).hanzi.srt"
 
+        # Lines that stay up long enough to reach with a pointer.
+        lookup="/out/Movies/LookupSample (2026)"
+        mkdir -p "$lookup"
+        $ffmpeg $source $vp9 "$lookup/LookupSample (2026).webm"
+        cp /fixtures/lookup.ja.srt "$lookup/LookupSample (2026).ja.srt"
+
         # Everything a fansub release does in one ASS file.
         typeset="/out/Movies/TypesetSample (2026)"
         mkdir -p "$typeset"

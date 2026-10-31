@@ -4,14 +4,16 @@ import {createHash} from 'node:crypto';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {build} from 'esbuild';
+import {displayCss} from './display-css.mjs';
 
 const yomitan = new URL('../third_party/yomitan/', import.meta.url).pathname;
 const {version} = JSON.parse(await readFile(new URL('package.json', import.meta.url), 'utf8'));
 
 const licenseBanner = `/*
  * Jellyfin Yomitan client. Copyright (C) the Jellyfin Yomitan contributors. GPL-3.0.
- * Bundles Yomitan's language code, Copyright (C) 2023-2026 Yomitan Authors, Copyright (C) 2019-2022 Yomichan
- * Authors, under the GNU General Public License version 3 or later. See https://github.com/yomidevs/yomitan.
+ * Bundles Yomitan's language and display code, its display templates, stylesheets and icons, Copyright (C) 2023-2026
+ * Yomitan Authors, Copyright (C) 2016-2022 Yomichan Authors, under the GNU General Public License version 3 or later.
+ * See https://github.com/yomidevs/yomitan.
  * This program comes with ABSOLUTELY NO WARRANTY. Source: third_party/yomitan in the plugin's repository.
  * Bundles kanji-processor, Copyright (c) 2024 Lyroxide, under the MIT License.
  */`;
@@ -50,6 +52,19 @@ const japaneseOnly = {
     },
 };
 
+// Yomitan's templates and CSS, from the submodule. Text in the bundle, because an extension's files are not here to fetch.
+const popupAssets = {
+    name: 'popup-assets',
+    setup(context) {
+        const assets = {
+            'yomitan-assets:templates': () => readFile(join(yomitan, 'ext/templates-display.html'), 'utf8'),
+            'yomitan-assets:css': () => displayCss(join(yomitan, 'ext')),
+        };
+        context.onResolve({filter: /^yomitan-assets:/}, ({path}) => ({path, namespace: 'popup-assets'}));
+        context.onLoad({filter: /.*/, namespace: 'popup-assets'}, async ({path}) => ({contents: await assets[path](), loader: 'text'}));
+    },
+};
+
 async function writeBundle({path, contents}) {
     await mkdir(dirname(path), {recursive: true});
     await writeFile(path, contents);
@@ -70,7 +85,7 @@ const engine = await build({
     outfile: 'dist/engine.js',
     format: 'esm',
     banner: {js: licenseBanner},
-    plugins: process.env.YOMITAN_FULL_ENGINE === '1' ? [yomitanLibs] : [yomitanLibs, japaneseOnly],
+    plugins: process.env.YOMITAN_FULL_ENGINE === '1' ? [yomitanLibs, popupAssets] : [yomitanLibs, japaneseOnly, popupAssets],
     define: {__CLIENT_VERSION__: JSON.stringify(version)},
     write: false,
 });

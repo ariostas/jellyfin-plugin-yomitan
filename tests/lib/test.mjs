@@ -1,0 +1,56 @@
+// The `test` every spec that plays video imports. It fails a test on any uncaught error in the page, because the
+// failure paths of Phase 3 passed every test while throwing on each timeupdate, and only a recording of page errors
+// showed it. Everything counts unless it is listed in IGNORED_PAGE_ERRORS, which says why.
+import {test as base} from '@playwright/test';
+
+export {expect} from '@playwright/test';
+
+/**
+ * Errors from jellyfin-web that have nothing to do with the plugin, and that a test cannot avoid. The plugin's own
+ * bundles are never excused: see `isOurs`. Each entry is logged when it is used, so nothing here disappears silently.
+ * @type {{pattern: RegExp, why: string}[]}
+ */
+export const IGNORED_PAGE_ERRORS = [];
+
+function isOurs(text) {
+    return /\/Yomitan\/(engine|client)\.js/.test(text);
+}
+
+function describeError(error) {
+    return `${error.name}: ${error.message}\n${error.stack ?? ''}`;
+}
+
+// Chromium reports a rejection nobody handled as a page error, and the other engines do not all do so.
+const reportRejections = () => {
+    window.addEventListener('unhandledrejection', ({reason}) => {
+        console.error(`[test] unhandled rejection: ${reason?.stack ?? reason}`);
+    });
+};
+
+export const test = base.extend({
+    pageErrors: [async ({context}, use, testInfo) => {
+        const errors = [];
+        const record = (text) => {
+            const ignored = isOurs(text) ? undefined : IGNORED_PAGE_ERRORS.find(({pattern}) => pattern.test(text));
+            if (ignored) {
+                console.log(`[page error excused: ${ignored.why}] ${text.split('\n')[0]}`);
+            } else {
+                errors.push(text);
+            }
+        };
+
+        await context.addInitScript(reportRejections);
+        context.on('weberror', (webError) => record(describeError(webError.error())));
+        context.on('console', (message) => {
+            if (message.text().startsWith('[test] unhandled rejection')) {
+                record(message.text());
+            }
+        });
+
+        await use(errors);
+        // A test that expects errors reads and empties this list.
+        if (errors.length > 0 && testInfo.status === testInfo.expectedStatus) {
+            throw new Error(`Uncaught errors in the page:\n${errors.join('\n\n')}`);
+        }
+    }, {auto: true}],
+});

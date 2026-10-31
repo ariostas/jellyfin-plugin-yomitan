@@ -1,5 +1,6 @@
-// Draws the current cues as plain text split into word spans, over the video. It knows nothing about playback, and
-// takes no input: pointer-events stay off so clicks reach the player. Phase 4 turns them on for the words.
+// Draws the current cues as plain text split into word spans, over the video. It knows nothing about playback. Only a
+// word a dictionary knows takes pointer events: everything else, including the gaps between words and a line that has
+// not been split yet, stays click-through so jellyfin-web sees it as it always did.
 
 const STYLE_ID = 'yomitan-overlay-style';
 const CSS = `
@@ -12,10 +13,10 @@ const CSS = `
     flex-direction: column;
     justify-content: space-between;
     align-items: center;
-    padding: 4% 5% var(--yomitan-bottom, 8%);
+    padding: max(4%, var(--yomitan-osd-top, 0px)) 5% max(var(--yomitan-bottom, 8%), var(--yomitan-osd-bottom, 0px));
     box-sizing: border-box;
     color: #fff;
-    font-size: clamp(18px, 5vh, 44px);
+    font-size: clamp(18px, min(5vh, 6vw), 44px);
     line-height: 1.4;
     text-align: center;
     text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 4px #000;
@@ -25,6 +26,21 @@ const CSS = `
 .yomitan-signs { font-size: 0.75em; }
 .yomitan-lines { margin-top: auto; }
 .yomitan-line { white-space: pre-wrap; }
+.yomitan-word:not(.yomitan-unknown) {
+    pointer-events: auto;
+    border-radius: 0.1em;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.yomitan-word.yomitan-active { background: rgba(88, 150, 255, 0.55); }
+@media (hover: hover) {
+    .yomitan-word:not(.yomitan-unknown):hover { background: rgba(255, 255, 255, 0.16); }
+    .yomitan-word.yomitan-active:hover { background: rgba(88, 150, 255, 0.55); }
+}
+@media (hover: none) {
+    .yomitan-word { user-select: none; -webkit-user-select: none; }
+}
 `;
 
 function installStyle() {
@@ -49,13 +65,14 @@ function appendPlainText(parent, text) {
 }
 
 export class Overlay {
-    /** @param {HTMLElement} container The player's container, so the overlay goes wherever the video does. */
+    /** @param {HTMLElement} container The layer over the player. */
     constructor(container) {
         installStyle();
         this.element = document.createElement('div');
         this.element.className = 'yomitan-overlay';
         this.element.lang = 'ja';
         this.element.hidden = true;
+        this._active = null;
         this._signs = document.createElement('div');
         this._signs.className = 'yomitan-signs';
         this._lines = document.createElement('div');
@@ -116,6 +133,52 @@ export class Overlay {
             position = end;
         });
         appendPlainText(line, cue.text.slice(position));
+        if (this._active?.cueId === cue.id) {
+            this.wordElement(this._active)?.classList.add('yomitan-active');
+        }
+    }
+
+    /**
+     * @param {{cueId: number, index: number}} word
+     * @returns {HTMLElement|null} The word's span, if it is on screen.
+     */
+    wordElement({cueId, index}) {
+        return this.element.querySelector(`[data-cue-id="${cueId}"] [data-index="${index}"]`);
+    }
+
+    /**
+     * @param {EventTarget} target Something an event happened on.
+     * @returns {{cueId: number, index: number, element: HTMLElement}|null} The word there, if it is one that a
+     *   dictionary knows.
+     */
+    wordAt(target) {
+        const element = target instanceof Element ? target.closest('.yomitan-word:not(.yomitan-unknown)') : null;
+        if (!element || !this.element.contains(element)) {
+            return null;
+        }
+
+        return {cueId: Number(element.parentElement.dataset.cueId), index: Number(element.dataset.index), element};
+    }
+
+    /**
+     * Marks one word, and it stays marked if its line is drawn again.
+     * @param {{cueId: number, index: number}|null} word
+     */
+    setActiveWord(word) {
+        this.element.querySelector('.yomitan-active')?.classList.remove('yomitan-active');
+        this._active = word;
+        if (word) {
+            this.wordElement(word)?.classList.add('yomitan-active');
+        }
+    }
+
+    /**
+     * Keeps the lines clear of the OSD.
+     * @param {{top: number, bottom: number}} insets Pixels at each end of the screen.
+     */
+    setInsets({top, bottom}) {
+        this.element.style.setProperty('--yomitan-osd-top', `${top}px`);
+        this.element.style.setProperty('--yomitan-osd-bottom', `${bottom}px`);
     }
 
     /** @param {boolean} present Whether a secondary subtitle is on, so this line has to sit above it. */

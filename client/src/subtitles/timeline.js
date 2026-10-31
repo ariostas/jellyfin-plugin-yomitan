@@ -54,10 +54,25 @@ export class CueTimeline {
     }
 }
 
+function groupBy(items, keyOf) {
+    const groups = new Map();
+    for (const item of items) {
+        const key = keyOf(item);
+        const group = groups.get(key);
+        if (group) {
+            group.push(item);
+        } else {
+            groups.set(key, [item]);
+        }
+    }
+
+    return groups;
+}
+
 function buildIntervals(cues) {
     const times = [...new Set(cues.flatMap(({start, end}) => [start, end]))].sort((a, b) => a - b);
-    const starting = Map.groupBy(cues, ({start}) => start);
-    const ending = Map.groupBy(cues, ({end}) => end);
+    const starting = groupBy(cues, ({start}) => start);
+    const ending = groupBy(cues, ({end}) => end);
     const active = new Map();
     const intervals = [];
 
