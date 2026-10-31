@@ -1,0 +1,9 @@
+bin/
+obj/
+out/
+dist/
+node_modules/
+.dev/
+test-results/
+playwright-report/
+*.user
