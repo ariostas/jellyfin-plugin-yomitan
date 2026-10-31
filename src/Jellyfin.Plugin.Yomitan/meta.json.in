@@ -1,0 +1,15 @@
+{
+  "category": "General",
+  "changelog": "",
+  "description": "Yomitan dictionary lookups on subtitles in jellyfin-web.",
+  "guid": "95f2db49-f966-44b9-a94f-4784792339fb",
+  "name": "Yomitan",
+  "overview": "Yomitan dictionary lookups on subtitles",
+  "owner": "ariostas",
+  "targetAbi": "@ABI@",
+  "timestamp": "0001-01-01T00:00:00.0000000Z",
+  "version": "@VERSION@",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": []
+}

@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.Yomitan</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.Yomitan</AssemblyName>
+    <Version>0.1.0.0</Version>
+    <JellyfinVersion>12.4.0</JellyfinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <ClientBundle>$(MSBuildThisFileDirectory)../../client/dist/client.js</ClientBundle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    All of these ship with the server, so nothing of theirs may end up in the plugin folder. Keep
+    Microsoft.Data.Sqlite on the version in the server's jellyfin.deps.json: it pulls in the SQLitePCLRaw
+    the server loads (2.1.13), while older versions pull in one with a known advisory (NU1903).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime;native" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime;native" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" ExcludeAssets="runtime;native" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(ClientBundle)" LogicalName="Jellyfin.Plugin.Yomitan.client.js" />
+  </ItemGroup>
+
+  <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)')">
+    <Error Text="client/dist/client.js is missing. Build through scripts/build.sh, which builds the client first." />
+  </Target>
+
+  <Target Name="WritePluginManifest" AfterTargets="Publish">
+    <PropertyGroup>
+      <PluginManifest>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)meta.json.in').Replace('@VERSION@','$(Version)').Replace('@ABI@','$(JellyfinVersion).0'))</PluginManifest>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(PublishDir)meta.json" Lines="$(PluginManifest)" Overwrite="true" />
+  </Target>
+
+</Project>
