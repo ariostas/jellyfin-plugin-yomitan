@@ -14,7 +14,7 @@ public class IndexInjectionStartupFilter : IStartupFilter
 
     /// <summary>Initializes a new instance of the <see cref="IndexInjectionStartupFilter"/> class.</summary>
     /// <param name="configuration">Server configuration.</param>
-    /// <param name="bundle">The embedded client script.</param>
+    /// <param name="bundle">The embedded client scripts.</param>
     public IndexInjectionStartupFilter(IServerConfigurationManager configuration, ClientBundle bundle)
     {
         _configuration = configuration;
@@ -29,7 +29,7 @@ public class IndexInjectionStartupFilter : IStartupFilter
             // Read once, like the server: it maps BaseUrl while building this pipeline, so a change only
             // takes effect on restart, and that rebuilds this too.
             var baseUrl = _configuration.GetNetworkConfiguration().BaseUrl;
-            app.UseMiddleware<IndexInjectionMiddleware>(baseUrl, _bundle.Version);
+            app.UseMiddleware<IndexInjectionMiddleware>(baseUrl, _bundle.Client.Version);
             next(app);
         };
     }

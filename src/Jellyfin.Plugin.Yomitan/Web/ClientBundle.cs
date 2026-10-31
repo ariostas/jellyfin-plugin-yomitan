@@ -1,28 +1,18 @@
-using System.Reflection;
-using System.Security.Cryptography;
-
 namespace Jellyfin.Plugin.Yomitan.Web;
 
-/// <summary>The client script embedded in the plugin assembly.</summary>
+/// <summary>The client scripts embedded in the plugin assembly.</summary>
 public sealed class ClientBundle
 {
-    private const string ResourceName = "Jellyfin.Plugin.Yomitan.client.js";
-
     /// <summary>Initializes a new instance of the <see cref="ClientBundle"/> class.</summary>
     public ClientBundle()
     {
-        using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName)
-            ?? throw new InvalidOperationException($"Embedded resource {ResourceName} is missing.");
-        using var memory = new MemoryStream();
-        resource.CopyTo(memory);
-
-        Content = memory.ToArray();
-        Version = Convert.ToHexStringLower(SHA256.HashData(Content))[..16];
+        Client = new ClientScript("Jellyfin.Plugin.Yomitan.client.js");
+        Engine = new ClientScript("Jellyfin.Plugin.Yomitan.engine.js");
     }
 
-    /// <summary>Gets the script.</summary>
-    public byte[] Content { get; }
+    /// <summary>Gets the small loader that every page gets.</summary>
+    public ClientScript Client { get; }
 
-    /// <summary>Gets a hash of the script, used as its ETag and as the cache-busting query string.</summary>
-    public string Version { get; }
+    /// <summary>Gets the engine, which the loader fetches when a video starts.</summary>
+    public ClientScript Engine { get; }
 }

@@ -111,3 +111,55 @@ test('with a BaseUrl, the index outside it is not ours to edit', async () => {
     const unprefixed = await fetch(`${server.origin}/web/`, {redirect: 'manual'});
     expect(await unprefixed.text()).not.toContain('data-yomitan-client');
 });
+
+test.describe('engine.js', () => {
+    const engineUrl = async () => {
+        const {text} = await rawRequest('/web/');
+        const script = new URL(tags(text)[0][1], `${server.url}/web/`);
+        const loader = (await rawRequest(`/Yomitan/client.js${script.search}`)).text;
+        return /engine\.js\?v=([0-9a-f]{16})/.exec(loader)[0];
+    };
+
+    test('the loader names the hash the server serves it under', async () => {
+        const url = await engineUrl();
+        const {status, headers} = await rawRequest(`/Yomitan/${url}`);
+        expect(status).toBe(200);
+        expect(headers['content-type']).toBe('text/javascript; charset=utf-8');
+        expect(headers['cache-control']).toContain('immutable');
+        expect(headers.etag).toBe(`"${url.split('=')[1]}"`);
+    });
+
+    test('it is public, and its caching follows the version', async () => {
+        const unversioned = await rawRequest('/Yomitan/engine.js');
+        expect(unversioned.status).toBe(200);
+        expect(unversioned.headers['cache-control']).toBe('no-cache');
+
+        const older = await rawRequest('/Yomitan/engine.js?v=0000000000000000');
+        expect(older.headers['cache-control']).toBe('no-cache');
+
+        const revalidated = await rawRequest('/Yomitan/engine.js', {headers: {'If-None-Match': unversioned.headers.etag}});
+        expect(revalidated.status).toBe(304);
+    });
+
+    test('anonymous access stops at the scripts', async () => {
+        const query = await rawRequest('/Yomitan/Query', {method: 'POST'});
+        expect(query.status).toBe(401);
+    });
+
+    test('compression reaches it, and the loader stays small', async () => {
+        const {body, headers} = await rawRequest('/Yomitan/engine.js', {headers: {'Accept-Encoding': 'br'}});
+        expect(headers['content-encoding']).toBe('br');
+        expect(body.length).toBeLessThan(100 * 1024);
+
+        const {text} = await rawRequest('/web/');
+        const script = new URL(tags(text)[0][1], `${server.url}/web/`);
+        const loader = await rawRequest(`/Yomitan/client.js${script.search}`);
+        expect(loader.body.length).toBeLessThan(3 * 1024);
+    });
+
+    test('it carries Yomitan\'s license notice', async () => {
+        const {text} = await rawRequest('/Yomitan/engine.js');
+        expect(text.slice(0, 500)).toContain('Yomitan Authors');
+        expect(text.slice(0, 500)).toContain('GNU General Public License');
+    });
+});

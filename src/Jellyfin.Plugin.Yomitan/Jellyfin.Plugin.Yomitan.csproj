@@ -11,6 +11,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NuGetAuditMode>all</NuGetAuditMode>
     <ClientBundle>$(MSBuildThisFileDirectory)../../client/dist/client.js</ClientBundle>
+    <EngineBundle>$(MSBuildThisFileDirectory)../../client/dist/engine.js</EngineBundle>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,11 +31,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="$(ClientBundle)" LogicalName="Jellyfin.Plugin.Yomitan.client.js" />
+    <EmbeddedResource Include="$(EngineBundle)" LogicalName="Jellyfin.Plugin.Yomitan.engine.js" />
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../third_party/yomitan/ext/data/schemas/dictionary-*-schema.json" LogicalName="Jellyfin.Plugin.Yomitan.schemas.%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)')">
-    <Error Text="client/dist/client.js is missing. Build through scripts/build.sh, which builds the client first." />
+  <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)') Or !Exists('$(EngineBundle)')">
+    <Error Text="client/dist/client.js or engine.js is missing. Build through scripts/build.sh, which builds the client first." />
   </Target>
 
   <Target Name="WritePluginManifest" AfterTargets="Publish">

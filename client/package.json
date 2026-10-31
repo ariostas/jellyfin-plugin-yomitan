@@ -9,5 +9,9 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2"
+  },
+  "dependencies": {
+    "hangul-js": "0.2.6",
+    "kanji-processor": "1.0.2"
   }
 }
