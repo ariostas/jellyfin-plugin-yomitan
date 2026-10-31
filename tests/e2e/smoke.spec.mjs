@@ -40,7 +40,7 @@ test('the client is present before login, on the login page', async ({page}) => 
 test('a movie plays with the client loaded', async ({page}) => {
     await logIn(page);
     const movies = await getMovies();
-    expect(Object.keys(movies).sort()).toEqual(['AssSample', 'ImageSample', 'SrtSample', 'TracksSample', 'TranscodeSample', 'TypesetSample']);
+    expect(Object.keys(movies).sort()).toEqual(['AssSample', 'ImageSample', 'LookupSample', 'SrtSample', 'TracksSample', 'TranscodeSample', 'TypesetSample']);
 
     await play(page, movies.SrtSample);
     expect(await page.evaluate(() => window.__yomitanJellyfin)).toBeTruthy();
