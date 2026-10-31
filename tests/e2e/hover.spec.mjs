@@ -224,14 +224,13 @@ test.describe('a mouse that is only passing', () => {
         await start(page);
         const {x, y} = await wordCentre(page, '学校');
         await page.mouse.move(x, y, {steps: 3});
-        const shaking = (async () => {
-            for (let step = 0; step < 30; ++step) {
-                await page.mouse.move(x + (step % 2 ? 3 : -3), y + (step % 3) - 1);
-                await page.waitForTimeout(20);
-            }
-        })();
-        await expectPopup(page, '学校');
-        await shaking;
+        for (let step = 0; step < 60; ++step) {
+            await page.mouse.move(x + (step % 2 ? 3 : -3), y + (step % 3) - 1);
+            await page.waitForTimeout(20);
+        }
+
+        // Asked while it is still shaking: once a mouse stops, anything would open.
+        expect((await popupState(page)).open).toBe(true);
     });
 
     test('stopping on a word after a fast approach does pause', async ({page}) => {
