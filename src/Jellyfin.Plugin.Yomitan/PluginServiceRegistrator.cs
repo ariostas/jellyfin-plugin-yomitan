@@ -1,9 +1,12 @@
+using Jellyfin.Plugin.Yomitan.Dictionaries;
 using Jellyfin.Plugin.Yomitan.Injection;
 using Jellyfin.Plugin.Yomitan.Web;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Jellyfin.Plugin.Yomitan;
 
@@ -15,5 +18,12 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<ClientBundle>();
         serviceCollection.AddTransient<IStartupFilter, IndexInjectionStartupFilter>();
+
+        serviceCollection.AddSingleton(services =>
+            new DictionaryStore(Path.Combine(services.GetRequiredService<IApplicationPaths>().DataPath, "yomitan")));
+        serviceCollection.AddSingleton<DictionaryQuery>();
+        serviceCollection.AddSingleton<JobQueue>();
+        serviceCollection.AddSingleton<Func<ImportLimits>>(() => Plugin.Instance?.Configuration.ToLimits() ?? new ImportLimits());
+        serviceCollection.AddSingleton<IHostedService, JobWorker>();
     }
 }

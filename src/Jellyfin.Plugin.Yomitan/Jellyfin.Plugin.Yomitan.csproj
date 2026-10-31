@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="$(ClientBundle)" LogicalName="Jellyfin.Plugin.Yomitan.client.js" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../third_party/yomitan/ext/data/schemas/dictionary-*-schema.json" LogicalName="Jellyfin.Plugin.Yomitan.schemas.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)')">

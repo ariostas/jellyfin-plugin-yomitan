@@ -11,14 +11,17 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="xunit.v3" Version="3.2.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
-  <!-- Compiled in directly: the middleware has no Jellyfin dependencies, and the server assemblies are not available here. -->
+  <!-- Compiled in directly: these have no Jellyfin dependencies, and the server assemblies are not available here. -->
   <ItemGroup>
     <Compile Include="../../src/Jellyfin.Plugin.Yomitan/Injection/IndexInjectionMiddleware.cs" Link="IndexInjectionMiddleware.cs" />
+    <Compile Include="../../src/Jellyfin.Plugin.Yomitan/Dictionaries/*.cs" Link="Dictionaries/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../third_party/yomitan/ext/data/schemas/dictionary-*-schema.json" LogicalName="Jellyfin.Plugin.Yomitan.schemas.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
