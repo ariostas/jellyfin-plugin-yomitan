@@ -3,8 +3,9 @@
 A Jellyfin plugin that adds [Yomitan](https://github.com/yomidevs/yomitan)-style dictionary lookups to subtitles
 in jellyfin-web. No fork of Jellyfin is needed.
 
-This is early work: the plugin loads a client script into jellyfin-web and has a dictionary backend, with no lookups
-in the player yet. [PLAN.md](PLAN.md) has the roadmap, and [docs/api.md](docs/api.md) is the HTTP contract.
+This is early work. During playback of a Japanese subtitle track, the plugin replaces the line with its own, split into
+words, using Yomitan's engine and dictionaries on the server. There are no popups yet. [PLAN.md](PLAN.md) has the
+roadmap, [docs/api.md](docs/api.md) is the HTTP contract, and [docs/client.md](docs/client.md) describes the client.
 
 ## Client support
 
@@ -55,6 +56,13 @@ using the test data in the submodule. To run the same comparison on real diction
 
 ```sh
 cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/parity-real.spec.mjs
+```
+
+The same directory runs the segmenter's hand-checked corpus. `tests/e2e/real-film.spec.mjs` takes real subtitle files
+and a real film, which are not in this repository either, and its header lists what it needs:
+
+```sh
+cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/segmentation-real.spec.mjs
 ```
 
 ## License

@@ -1,7 +1,7 @@
 # Dictionary API
 
 The HTTP contract between the plugin and its clients. It covers dictionary management and the database that
-Yomitan's `Translator` runs against. `tests/e2e/contract.spec.mjs` replays every example here against a real server
+Yomitan's `Translator` runs against. The two public scripts, `client.js` and `engine.js`, are in [client.md](client.md). `tests/e2e/contract.spec.mjs` replays every example here against a real server
 and checks the limits, error codes, routes and operations below against the source, so this file cannot drift
 without a test failing. To refresh the example responses after a deliberate change:
 
