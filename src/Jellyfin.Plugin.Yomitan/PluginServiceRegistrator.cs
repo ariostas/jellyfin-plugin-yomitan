@@ -24,6 +24,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<DictionaryQuery>();
         serviceCollection.AddSingleton<JobQueue>();
         serviceCollection.AddSingleton<Func<ImportLimits>>(() => Plugin.Instance?.Configuration.ToLimits() ?? new ImportLimits());
+        serviceCollection.AddSingleton<Func<DictionaryStore>>(services => services.GetRequiredService<DictionaryStore>);
         serviceCollection.AddSingleton<IHostedService, JobWorker>();
     }
 }

@@ -4,10 +4,12 @@ import {bundleYomitan} from './yomitan.mjs';
 
 const origin = 'https://yomitan.test';
 
-/** Opens a page with an empty real DictionaryDatabase. */
-export async function openYomitan(browser) {
+/**
+ * Opens a page with an empty real DictionaryDatabase in a browser context. An ordinary context keeps IndexedDB in
+ * memory under a small quota, so real dictionaries need a persistent one.
+ */
+export async function openYomitan(context) {
     const script = await bundleYomitan();
-    const context = await browser.newContext();
     const page = await context.newPage();
 
     // The database starts a Worker for drawMedia, which is not under test and has no script here.
@@ -146,4 +148,3 @@ export async function openYomitan(browser) {
         },
     };
 }
-

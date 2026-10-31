@@ -161,6 +161,7 @@ public sealed partial class DictionaryImporter
             Report();
             var index = ReadIndex(out var version);
             _title = index["title"]!.GetValue<string>();
+            Report();
 
             var v1 = version == 1;
             var termSchema = JsonSchema.Load(v1 ? "dictionary-term-bank-v1" : "dictionary-term-bank-v3");

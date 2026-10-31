@@ -254,7 +254,7 @@ public class DictionaryImportTests
     {
         using var test = new TestStore();
         var queue = new JobQueue();
-        using var worker = new JobWorker(queue, test.Store, () => new ImportLimits(), Microsoft.Extensions.Logging.Abstractions.NullLogger<JobWorker>.Instance);
+        using var worker = new JobWorker(queue, () => test.Store, () => new ImportLimits(), Microsoft.Extensions.Logging.Abstractions.NullLogger<JobWorker>.Instance);
         await worker.StartAsync(TestContext.Current.CancellationToken);
 
         var path = test.Store.NewUploadPath();
@@ -275,6 +275,25 @@ public class DictionaryImportTests
         }
 
         Assert.False(queue.TryReserve());
+        await worker.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>The worker starts with the server, and a broken database must not stop that.</summary>
+    [Fact]
+    public async Task A_store_that_cannot_open_fails_the_job_and_not_the_worker()
+    {
+        using var test = new TestStore();
+        var queue = new JobQueue();
+        using var worker = new JobWorker(queue, () => throw new InvalidOperationException("corrupt"), () => new ImportLimits(), Microsoft.Extensions.Logging.Abstractions.NullLogger<JobWorker>.Instance);
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(queue.TryReserve());
+        var job = new DictionaryJob("import") { ArchivePath = test.WriteZip(("index.json", "{}")) };
+        queue.Submit(job);
+        Wait(() => job.FinishedAt is not null);
+
+        Assert.Equal("internal", job.ErrorCode);
+        Assert.DoesNotContain("corrupt", job.ErrorMessage, StringComparison.Ordinal);
         await worker.StopAsync(TestContext.Current.CancellationToken);
     }
 

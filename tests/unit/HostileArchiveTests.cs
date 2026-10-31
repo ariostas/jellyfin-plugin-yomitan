@@ -86,6 +86,50 @@ public class HostileArchiveTests
         Assert.Contains("central directory", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The real thing takes a file over 4 GB, so this rewrites an ordinary archive's end records the way one would
+    /// look. The entry count only trips if the walk found the directory through the zip64 record.
+    /// </summary>
+    [Fact]
+    public void A_zip64_archive_is_read_through_its_zip64_record()
+    {
+        using var test = new TestStore();
+        var path = test.WriteZip(Index, ("term_bank_1.json", "[]"));
+        var bytes = File.ReadAllBytes(path);
+        var end = bytes.Length - 22;
+        Assert.Equal(0x06054b50u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end)));
+        var entries = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(end + 10));
+        var directorySize = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 12));
+        var directoryStart = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 16));
+
+        var end64 = new byte[56];
+        BinaryPrimitives.WriteUInt32LittleEndian(end64, 0x06064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(4), 44);
+        BinaryPrimitives.WriteUInt16LittleEndian(end64.AsSpan(12), 45);
+        BinaryPrimitives.WriteUInt16LittleEndian(end64.AsSpan(14), 45);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(24), entries);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(32), entries);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(40), directorySize);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(48), directoryStart);
+
+        var locator = new byte[20];
+        BinaryPrimitives.WriteUInt32LittleEndian(locator, 0x07064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(locator.AsSpan(8), (ulong)end);
+        BinaryPrimitives.WriteUInt32LittleEndian(locator.AsSpan(16), 1);
+
+        var tail = bytes[end..];
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(8), 0xFFFF);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(10), 0xFFFF);
+        BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(12), uint.MaxValue);
+        BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(16), uint.MaxValue);
+        File.WriteAllBytes(path, [.. bytes[..end], .. end64, .. locator, .. tail]);
+
+        Assert.Equal("Sample", test.Import(path).Title);
+        test.Store.Delete("Sample");
+        var error = Assert.Throws<ImportException>(() => test.Import(path, limits: new ImportLimits { MaxEntries = 1 }));
+        Assert.Contains("entries", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_bank_over_the_limit_is_refused_by_its_declared_size()
     {

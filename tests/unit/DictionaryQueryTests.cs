@@ -60,6 +60,70 @@ public class DictionaryQueryTests
         Assert.Equal("suffix", row.GetProperty("matchType").GetString());
     }
 
+    /// <summary>
+    /// The Translator cuts text by UTF-16 unit, so half of 𠮟 reaches the server as a lone surrogate. Real JMdict
+    /// lookups found this: it used to be a 500 on any subtitle with an astral character or emoji.
+    /// </summary>
+    [Fact]
+    public void A_string_cut_through_a_surrogate_pair_matches_nothing_and_keeps_later_indexes_right()
+    {
+        using var test = new TestStore();
+        test.Import(
+            ("index.json", TestStore.SampleIndex),
+            ("term_bank_1.json", """[["𠮟る","しかる","","",0,[],1,""]]"""),
+            ("term_meta_bank_1.json", """[["𠮟る","freq",1]]"""),
+            ("kanji_bank_1.json", """[["𠮟","シツ","","",[],{}]]"""),
+            ("kanji_meta_bank_1.json", """[["𠮟","freq",1]]"""),
+            ("tag_bank_1.json", """[["n","c",0,"",0]]"""));
+
+        const string Lone = "\"\\ud842\"";
+        const string List = """["\ud842","\udfb7","a\ud842b","𠮟る"]""";
+        using var request = JsonDocument.Parse($$"""
+            {"operations":[
+                {"op":"findTermsBulk","termList":{{List}},"dictionaries":["Sample",{{Lone}}],"matchType":"exact"},
+                {"op":"findTermsBulk","termList":[{{Lone}}],"dictionaries":["Sample"],"matchType":"prefix"},
+                {"op":"findTermsBulk","termList":[{{Lone}}],"dictionaries":["Sample"],"matchType":"suffix"},
+                {"op":"findTermsExactBulk","termList":[{"term":{{Lone}},"reading":"x"},{"term":"x","reading":{{Lone}}},{"term":"𠮟る","reading":"しかる"}],"dictionaries":["Sample"]},
+                {"op":"findTermsBySequenceBulk","items":[{"query":1,"dictionary":{{Lone}}},{"query":1,"dictionary":"Sample"}]},
+                {"op":"findTermMetaBulk","termList":{{List}},"dictionaries":["Sample"]},
+                {"op":"findKanjiBulk","kanjiList":[{{Lone}},"𠮟"],"dictionaries":["Sample"]},
+                {"op":"findKanjiMetaBulk","kanjiList":[{{Lone}},"𠮟"],"dictionaries":["Sample"]},
+                {"op":"findTagMetaBulk","items":[{"query":{{Lone}},"dictionary":"Sample"},{"query":"n","dictionary":{{Lone}}},{"query":"n","dictionary":"Sample"}]}
+            ]}
+            """);
+        using var response = JsonDocument.Parse(test.Query.Execute(request.RootElement));
+        var results = response.RootElement.GetProperty("results");
+
+        int[] expectedIndexes = [3, -1, -1, 2, 1, 3, 1, 1];
+        for (var i = 0; i < expectedIndexes.Length; i++)
+        {
+            var rows = results[i].GetProperty("rows");
+            if (expectedIndexes[i] < 0)
+            {
+                Assert.Equal(0, rows.GetArrayLength());
+            }
+            else
+            {
+                Assert.Equal(expectedIndexes[i], Assert.Single(rows.EnumerateArray()).GetProperty("index").GetInt32());
+            }
+        }
+
+        var tags = results[8].GetProperty("rows");
+        Assert.Equal(JsonValueKind.Null, tags[0].ValueKind);
+        Assert.Equal(JsonValueKind.Null, tags[1].ValueKind);
+        Assert.Equal("n", tags[2].GetProperty("name").GetString());
+    }
+
+    [Theory]
+    [InlineData("""{"operations":[{"op":"\ud842"}]}""", "unknown_operation")]
+    [InlineData("""{"operations":[{"op":"findTermsBulk","termList":[],"dictionaries":[],"matchType":"\ud842"}]}""", "invalid_request")]
+    public void A_lone_surrogate_in_a_keyword_is_a_bad_request_not_a_crash(string body, string code)
+    {
+        using var test = new TestStore();
+        using var request = JsonDocument.Parse(body);
+        Assert.Equal(code, Assert.Throws<QueryException>(() => test.Query.Execute(request.RootElement)).Code);
+    }
+
     [Fact]
     public void Unknown_titles_and_empty_lists_match_nothing()
     {
@@ -182,6 +246,35 @@ public class DictionaryQueryTests
         Assert.Equal(QueryLimits.MaxRows, list[0].GetProperty("rows").GetArrayLength());
         Assert.True(list[1].GetProperty("truncated").GetBoolean());
         Assert.Equal(1, list[2].GetProperty("rows").GetArrayLength());
+    }
+
+    [Fact]
+    public void Byte_budget_cuts_results_short_and_says_so()
+    {
+        using var test = new TestStore();
+        var glossary = new string('x', 1024 * 1024);
+        var rows = string.Join(',', Enumerable.Range(0, 40).Select(i => $"""["語","ご","","",0,["{glossary}"],{i},""]"""));
+        test.Import(("index.json", TestStore.SampleIndex), ("term_bank_1.json", $"[{rows}]"));
+
+        var result = test.Run(new { op = "findTermsBulk", termList = new[] { "語" }, dictionaries = Sample, matchType = "exact" });
+
+        Assert.True(result.GetProperty("truncated").GetBoolean());
+        Assert.InRange(result.GetProperty("rows").GetArrayLength(), 1, (QueryLimits.MaxResponseBytes / glossary.Length) + 1);
+    }
+
+    [Fact]
+    public void Time_budget_cuts_results_short_and_says_so()
+    {
+        using var test = new TestStore();
+        test.Import(("index.json", TestStore.SampleIndex), ("term_bank_1.json", """[["語","ご","","",0,[],1,""]]"""));
+        var query = new DictionaryQuery(test.Store) { MaxDuration = TimeSpan.Zero };
+
+        using var request = JsonDocument.Parse("""{"operations":[{"op":"findTermsBulk","termList":["語"],"dictionaries":["Sample"],"matchType":"exact"}]}""");
+        using var response = JsonDocument.Parse(query.Execute(request.RootElement));
+
+        var result = response.RootElement.GetProperty("results")[0];
+        Assert.True(result.GetProperty("truncated").GetBoolean());
+        Assert.Equal(0, result.GetProperty("rows").GetArrayLength());
     }
 
     /// <summary>The visited set can swallow a full page, so the budget alone would not notice the cut.</summary>

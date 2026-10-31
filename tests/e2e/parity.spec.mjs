@@ -84,6 +84,18 @@ function buildOperations(dictionaries, terms, readings, kanji, tags, sequences) 
     const all = dictionaries;
     const operations = [];
 
+    // What the Translator sends when it cuts 𠮟 in half. Yomitan finds no exact match for these. A prefix search
+    // would match on the half character, which docs/api.md lists as a difference.
+    const halves = ['\ud842', '\udfb7', '打\ud842'];
+    operations.push(
+        {op: 'findTermsBulk', termList: [...halves, '打つ'], dictionaries: all, matchType: 'exact'},
+        {op: 'findTermsExactBulk', termList: [{term: '\ud842', reading: 'x'}, {term: '打つ', reading: 'うつ'}], dictionaries: all},
+        {op: 'findTermMetaBulk', termList: [...halves, '打つ'], dictionaries: all},
+        {op: 'findKanjiBulk', kanjiList: [...halves, '打'], dictionaries: all},
+        {op: 'findKanjiMetaBulk', kanjiList: [...halves, '打'], dictionaries: all},
+        {op: 'findTagMetaBulk', items: [{query: '\ud842', dictionary: all[0]}, {query: tags[0], dictionary: all[0]}]},
+    );
+
     for (const matchType of ['exact', 'prefix', 'suffix']) {
         // One large list, so visited interacts across items, and each item alone, so order is seen per item.
         const list = [...strings, ...fragments, ...missing];
@@ -149,7 +161,7 @@ test.beforeAll(async ({browser}) => {
     client = await clientFor(credentials.username, credentials.password);
     await deleteAll(client);
 
-    yomitan = await openYomitan(browser);
+    yomitan = await openYomitan(await browser.newContext());
     const archives = [
         ['main', zipTestDictionary('valid-dictionary1')],
         ['second', second()],

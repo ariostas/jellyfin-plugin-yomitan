@@ -121,16 +121,19 @@ public sealed class JobQueue
 public sealed class JobWorker : BackgroundService
 {
     private readonly JobQueue _queue;
-    private readonly DictionaryStore _store;
+    private readonly Func<DictionaryStore> _store;
     private readonly Func<ImportLimits> _limits;
     private readonly ILogger<JobWorker> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="JobWorker"/> class.</summary>
     /// <param name="queue">The job queue.</param>
-    /// <param name="store">The dictionaries.</param>
+    /// <param name="store">
+    /// Gets the dictionaries. This runs at server start, where an exception would stop Jellyfin from booting, so
+    /// a database that cannot be opened has to wait until there is a job to fail.
+    /// </param>
     /// <param name="limits">Gets the current limits.</param>
     /// <param name="logger">The logger.</param>
-    public JobWorker(JobQueue queue, DictionaryStore store, Func<ImportLimits> limits, ILogger<JobWorker> logger)
+    public JobWorker(JobQueue queue, Func<DictionaryStore> store, Func<ImportLimits> limits, ILogger<JobWorker> logger)
     {
         _queue = queue;
         _store = store;
@@ -164,7 +167,7 @@ public sealed class JobWorker : BackgroundService
         {
             if (job.ArchivePath is { } archivePath)
             {
-                var importer = new DictionaryImporter(_store, _limits(), progress =>
+                var importer = new DictionaryImporter(_store(), _limits(), progress =>
                 {
                     job.Progress = progress;
                     job.Title ??= progress.Title;
@@ -173,7 +176,7 @@ public sealed class JobWorker : BackgroundService
             }
             else
             {
-                _store.Delete(job.Title!);
+                _store().Delete(job.Title!);
             }
 
             job.State = "succeeded";

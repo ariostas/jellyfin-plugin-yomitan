@@ -67,6 +67,9 @@ public sealed class DictionaryQuery
         _store = store;
     }
 
+    /// <summary>Gets the time budget of a request.</summary>
+    internal TimeSpan MaxDuration { get; init; } = TimeSpan.FromMilliseconds(QueryLimits.MaxDurationMs);
+
     /// <summary>Runs a request body.</summary>
     /// <param name="request">The parsed request.</param>
     /// <returns>The response body as UTF-8 JSON.</returns>
@@ -78,7 +81,7 @@ public sealed class DictionaryQuery
         using var connection = _store.OpenReader();
         using var transaction = connection.BeginTransaction(deferred: true);
         var dictionaries = DictionaryStore.List(connection);
-        var run = new Run(connection, dictionaries);
+        var run = new Run(connection, dictionaries, DateTime.UtcNow + MaxDuration);
         return run.Execute(operations);
     }
 
@@ -122,12 +125,12 @@ public sealed class DictionaryQuery
             throw new QueryException("invalid_request", "Each operation must be an object with an \"op\" string");
         }
 
-        var name = op.GetString();
+        var name = Text(op);
         switch (name)
         {
             case "findTermsBulk":
-                var matchType = RequireString(operation, name, "matchType");
-                if (matchType is not ("exact" or "prefix" or "suffix"))
+                RequireString(operation, name, "matchType");
+                if (Text(operation.GetProperty("matchType")) is not ("exact" or "prefix" or "suffix"))
                 {
                     throw Invalid(name, "matchType must be exact, prefix or suffix");
                 }
@@ -172,14 +175,29 @@ public sealed class DictionaryQuery
 
     private static QueryException Invalid(string operation, string message) => new("invalid_request", $"{operation}: {message}");
 
-    private static string RequireString(JsonElement parent, string operation, string key)
+    private static void RequireString(JsonElement parent, string operation, string key)
     {
         if (!parent.TryGetProperty(key, out var value) || value.ValueKind != JsonValueKind.String)
         {
             throw Invalid(operation, $"{key} must be a string");
         }
+    }
 
-        return value.GetString()!;
+    /// <summary>
+    /// Decodes a string from a request, or returns null if .NET cannot represent it. The Translator slices text by
+    /// UTF-16 unit, so an astral character such as 𠮟 or an emoji regularly reaches here cut in half. No key in the
+    /// database has a lone surrogate, because the importer refuses them, so such a string simply matches nothing.
+    /// </summary>
+    private static string? Text(JsonElement element)
+    {
+        try
+        {
+            return element.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private static JsonElement RequireArray(JsonElement parent, string operation, string key)
@@ -239,14 +257,15 @@ public sealed class DictionaryQuery
         private readonly Dictionary<string, long> _ids;
         private readonly MemoryStream _output = new();
         private readonly Utf8JsonWriter _writer;
-        private readonly DateTime _deadline = DateTime.UtcNow.AddMilliseconds(QueryLimits.MaxDurationMs);
+        private readonly DateTime _deadline;
         private int _rowsLeft = QueryLimits.MaxRows;
         private long _bytesLeft = QueryLimits.MaxResponseBytes;
         private bool _truncated;
 
-        public Run(SqliteConnection connection, List<DictionaryRecord> dictionaries)
+        public Run(SqliteConnection connection, List<DictionaryRecord> dictionaries, DateTime deadline)
         {
             _connection = connection;
+            _deadline = deadline;
             _dictionaries = dictionaries;
             _titles = dictionaries.ToDictionary(d => d.Id, d => d.Title);
             _ids = dictionaries.ToDictionary(d => d.Title, d => d.Id, StringComparer.Ordinal);
@@ -277,7 +296,7 @@ public sealed class DictionaryQuery
 
         private void Dispatch(JsonElement operation)
         {
-            var name = operation.GetProperty("op").GetString();
+            var name = Text(operation.GetProperty("op"));
             if (name == "getDictionaryInfo")
             {
                 foreach (var dictionary in _dictionaries)
@@ -348,7 +367,7 @@ public sealed class DictionaryQuery
         private string? DictionaryFilter(JsonElement operation)
         {
             var ids = operation.GetProperty("dictionaries").EnumerateArray()
-                .Select(title => _ids.TryGetValue(title.GetString()!, out var id) ? id : (long?)null)
+                .Select(title => Text(title) is { } name && _ids.TryGetValue(name, out var id) ? id : (long?)null)
                 .OfType<long>()
                 .Distinct()
                 .ToList();
@@ -376,7 +395,7 @@ public sealed class DictionaryQuery
                 return;
             }
 
-            var matchType = operation.GetProperty("matchType").GetString()!;
+            var matchType = Text(operation.GetProperty("matchType"))!;
             var exact = matchType == "exact";
             var reverse = matchType == "suffix";
             string[] columns = reverse ? ["expression_reverse", "reading_reverse"] : ["expression", "reading"];
@@ -390,7 +409,12 @@ public sealed class DictionaryQuery
             var itemIndex = 0;
             foreach (var element in operation.GetProperty("termList").EnumerateArray())
             {
-                var item = element.GetString()!;
+                if (Text(element) is not { } item)
+                {
+                    itemIndex++;
+                    continue;
+                }
+
                 var key = reverse ? DictionaryImporter.StringReverse(item) : item;
                 for (var indexIndex = 0; indexIndex < commands.Length; indexIndex++)
                 {
@@ -481,12 +505,15 @@ public sealed class DictionaryQuery
             var itemIndex = 0;
             foreach (var item in operation.GetProperty("termList").EnumerateArray())
             {
-                command.Parameters["$term"].Value = item.GetProperty("term").GetString();
-                command.Parameters["$reading"].Value = item.GetProperty("reading").GetString();
-                var full = ReadTerms(command, rows, sortKeyColumn: null);
-                if (!WriteAll(rows, itemIndex, "term", full))
+                if (Text(item.GetProperty("term")) is { } term && Text(item.GetProperty("reading")) is { } reading)
                 {
-                    return;
+                    command.Parameters["$term"].Value = term;
+                    command.Parameters["$reading"].Value = reading;
+                    var full = ReadTerms(command, rows, sortKeyColumn: null);
+                    if (!WriteAll(rows, itemIndex, "term", full))
+                    {
+                        return;
+                    }
                 }
 
                 itemIndex++;
@@ -501,7 +528,7 @@ public sealed class DictionaryQuery
             var itemIndex = 0;
             foreach (var item in operation.GetProperty("items").EnumerateArray())
             {
-                if (_ids.TryGetValue(item.GetProperty("dictionary").GetString()!, out var dictionaryId))
+                if (Text(item.GetProperty("dictionary")) is { } title && _ids.TryGetValue(title, out var dictionaryId))
                 {
                     command.Parameters["$sequence"].Value = item.GetProperty("query").GetDouble();
                     command.Parameters["$dict"].Value = dictionaryId;
@@ -621,7 +648,12 @@ public sealed class DictionaryQuery
                     return;
                 }
 
-                var key = item.GetString()!;
+                if (Text(item) is not { } key)
+                {
+                    itemIndex++;
+                    continue;
+                }
+
                 command.Parameters["$key"].Value = key;
                 using (var reader = command.ExecuteReader())
                 {
@@ -668,7 +700,12 @@ public sealed class DictionaryQuery
                     return;
                 }
 
-                var key = item.GetString()!;
+                if (Text(item) is not { } key)
+                {
+                    itemIndex++;
+                    continue;
+                }
+
                 command.Parameters["$key"].Value = key;
                 using (var reader = command.ExecuteReader())
                 {
@@ -711,15 +748,16 @@ public sealed class DictionaryQuery
                     return;
                 }
 
-                var title = item.GetProperty("dictionary").GetString()!;
-                if (!_ids.TryGetValue(title, out var dictionaryId))
+                var title = Text(item.GetProperty("dictionary"));
+                var name = Text(item.GetProperty("query"));
+                if (title is null || name is null || !_ids.TryGetValue(title, out var dictionaryId))
                 {
                     _writer.WriteNullValue();
                     continue;
                 }
 
                 command.Parameters["$dict"].Value = dictionaryId;
-                command.Parameters["$name"].Value = item.GetProperty("query").GetString();
+                command.Parameters["$name"].Value = name;
                 using var reader = command.ExecuteReader();
                 if (!reader.Read())
                 {

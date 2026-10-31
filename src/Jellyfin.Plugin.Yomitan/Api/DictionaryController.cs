@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Jellyfin.Plugin.Yomitan.Dictionaries;
@@ -93,7 +92,7 @@ public class DictionaryController : ControllerBase
             var job = new DictionaryJob("import") { Replace = replace, ArchivePath = path };
             _jobs.Submit(job);
             submitted = true;
-            return Accepted(job);
+            return AcceptedJob(job);
         }
         catch (Exception e) when (e is IOException or OperationCanceledException or BadHttpRequestException)
         {
@@ -133,8 +132,13 @@ public class DictionaryController : ControllerBase
     [HttpDelete("Dictionaries")]
     [Authorize(Policy = RequiresElevation)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    public IActionResult Delete([FromQuery, Required] string title)
+    public IActionResult Delete([FromQuery] string? title)
     {
+        if (string.IsNullOrEmpty(title))
+        {
+            return Error(StatusCodes.Status400BadRequest, "invalid_request", "title is required");
+        }
+
         if (!_store.Exists(title))
         {
             return Error(StatusCodes.Status404NotFound, "not_found", "No dictionary has that title");
@@ -147,7 +151,7 @@ public class DictionaryController : ControllerBase
 
         var job = new DictionaryJob("delete") { Title = title };
         _jobs.Submit(job);
-        return Accepted(job);
+        return AcceptedJob(job);
     }
 
     /// <summary>Gets a job's status.</summary>
@@ -206,8 +210,13 @@ public class DictionaryController : ControllerBase
     [HttpGet("Media")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetMedia([FromQuery, Required] string dictionary, [FromQuery, Required] string path)
+    public IActionResult GetMedia([FromQuery] string? dictionary, [FromQuery] string? path)
     {
+        if (string.IsNullOrEmpty(dictionary) || path is null)
+        {
+            return Error(StatusCodes.Status400BadRequest, "invalid_request", "dictionary and path are required");
+        }
+
         if (!SafeArchive.IsSafeName(path))
         {
             return Error(StatusCodes.Status400BadRequest, "unsafe_path", "That is not a valid media path");
@@ -267,7 +276,7 @@ public class DictionaryController : ControllerBase
     private ContentResult Error(int status, string code, string message)
         => JsonResult(new { error = new { code, message } }, status);
 
-    private ContentResult Accepted(DictionaryJob job)
+    private ContentResult AcceptedJob(DictionaryJob job)
     {
         Response.Headers.Location = $"{Request.PathBase}/Yomitan/Jobs/{job.Id}";
         return JsonResult(Describe(job), StatusCodes.Status202Accepted);

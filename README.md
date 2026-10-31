@@ -3,8 +3,8 @@
 A Jellyfin plugin that adds [Yomitan](https://github.com/yomidevs/yomitan)-style dictionary lookups to subtitles
 in jellyfin-web. No fork of Jellyfin is needed.
 
-This is early work: the plugin currently only loads a client script into jellyfin-web. [PLAN.md](PLAN.md) has the
-roadmap.
+This is early work: the plugin loads a client script into jellyfin-web and has a dictionary backend, with no lookups
+in the player yet. [PLAN.md](PLAN.md) has the roadmap, and [docs/api.md](docs/api.md) is the HTTP contract.
 
 ## Client support
 
@@ -47,6 +47,14 @@ To run Playwright against a server that is already up, pass it the same `JF_*` v
 
 ```sh
 cd tests && npm ci && npx playwright test
+```
+
+`tests/e2e/parity.spec.mjs` diffs the server against Yomitan's real importer, database and `Translator` in Chromium,
+using the test data in the submodule. To run the same comparison on real dictionaries, point it at a directory holding
+`JMdict_english.zip`, `JMnedict.zip` and `KANJIDIC_english.zip`, which are not in this repository:
+
+```sh
+cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/parity-real.spec.mjs
 ```
 
 ## License
