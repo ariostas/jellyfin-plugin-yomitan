@@ -114,7 +114,7 @@ test('a line costs one request the first time and none after', async ({page}) =>
     expect(second.result).toEqual(first.result);
 });
 
-test('a full store starts over before fetching, so a line never loses the rows it just asked for', async ({page}) => {
+test('a full store starts over between lines, so a line never loses the rows it just asked for', async ({page}) => {
     await openEngine(page);
     const requests = await page.evaluate(async () => {
         const terms = window.engine._terms;

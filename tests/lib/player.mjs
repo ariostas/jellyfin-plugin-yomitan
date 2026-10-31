@@ -3,21 +3,26 @@
 import {readFileSync} from 'node:fs';
 import {expect} from '@playwright/test';
 
-/** Parses an SRT fixture, so the specs check the client against the file and not against itself. */
-export function readSrt(name) {
+/** Parses SRT text, so the specs check the client against the file and not against itself. */
+export function parseSrt(content) {
     const seconds = (text) => {
-        const [hours, minutes, rest] = text.split(':');
+        const [hours, minutes, rest] = text.trim().split(':');
         return Number(hours) * 3600 + Number(minutes) * 60 + Number(rest.replace(',', '.'));
     };
 
-    return readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8')
+    return content
         .trim()
-        .split(/\n\n+/)
+        .split(/\n\s*\n+/)
         .map((block) => {
-            const [, timing, ...text] = block.split('\n');
-            const [start, end] = timing.split(' --> ').map(seconds);
-            return {start, end, text: text.join('\n')};
+            const lines = block.split('\n');
+            const timing = lines.findIndex((line) => line.includes('-->'));
+            const [start, end] = lines[timing].split('-->').map(seconds);
+            return {start, end, text: lines.slice(timing + 1).join('\n')};
         });
+}
+
+export function readSrt(name) {
+    return parseSrt(readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8'));
 }
 
 /** The cue a file says is showing at `time`, or an empty string. */

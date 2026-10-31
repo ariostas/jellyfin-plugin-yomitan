@@ -117,6 +117,7 @@ export class Engine extends EventTarget {
      */
     prefetch(windows) {
         const run = async () => {
+            this._terms.makeRoom();
             this._recording.terms.clear();
             for (const window of new Set(windows)) {
                 await this._planner.findTerms('simple', window, this._options);

@@ -110,6 +110,10 @@ Jellyfin server                          Client (jellyfin-web)
    | **Greedy + boundary** | `は/ケーキ` | one word | **No broken words on all 12** |
 
    Twelve sentences is a small sample, so Phase 3 should run it on real subtitle files.
+
+   **Phase 3 result:** it did not hold up. With a names dictionary loaded, about a quarter of 70 lines came out wrong,
+   as in `君/のこ/となん/て`. The boundary rule stays, but the choice between candidates is now a cheapest-path search
+   with costs for weak evidence. See [docs/client.md](docs/client.md#segmentation).
 6. **Reuse Yomitan's popup rendering.** `DisplayGenerator` and `StructuredContentGenerator` bundle cleanly to
    49 KB with no extension modules. JMdict glossaries are `structured-content`, so a hand-written renderer would
    be wrong for most dictionaries.

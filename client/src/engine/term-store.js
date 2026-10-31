@@ -71,8 +71,6 @@ export class TermStore {
      *   for again next time, and what did arrive still answers for now.
      */
     async ensure(terms) {
-        // Before fetching, never after: what is fetched here is about to be read.
-        this._startOverIfFull();
         const missing = [...new Set(terms)].filter((term) => !this._known.has(term));
         let complete = true;
         for (let start = 0; start < missing.length; start += MAX_TERMS_PER_REQUEST) {
@@ -115,7 +113,11 @@ export class TermStore {
         return first && second;
     }
 
-    _startOverIfFull() {
+    /**
+     * Starts over if the store is full. Only between lines, never during one: what a line fetched is about to be read,
+     * and losing it would turn every window of the line into a request of its own.
+     */
+    makeRoom() {
         if (this._known.size > MAX_TERMS || this._rowCount > MAX_ROWS) {
             // Not a change of dictionaries, so a request in flight stays valid.
             const {generation} = this;

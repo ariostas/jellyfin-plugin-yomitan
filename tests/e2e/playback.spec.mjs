@@ -226,11 +226,14 @@ test.describe('only Japanese', () => {
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.english});
         await expectTrack(page, {state: 'inactive', language: 'eng', index: TRACKS.english});
-        expect(await nativeState(page)).toEqual({
-            hiding: false,
-            overlay: false,
-            tracks: [{mode: 'showing', label: 'manualTrack', cues: englishCues.length}],
-        });
+        const state = await nativeState(page);
+        expect(state).toMatchObject({hiding: false, overlay: false, tracks: [{mode: 'showing', label: 'manualTrack'}]});
+
+        // Selecting the track that is already the default can make jellyfin-web add its cues twice, on its own.
+        expect(state.tracks[0].cues % englishCues.length).toBe(0);
+        await startRecording(page);
+        await page.waitForTimeout(1000);
+        expect((await stopRecording(page)).every(({text}) => text === '')).toBe(true);
     });
 
     test('an untagged Japanese track activates by its text', async ({page}) => {
@@ -458,6 +461,27 @@ test.describe('the subtitle offset', () => {
     });
 });
 
+test.describe('segmenting ahead', () => {
+    test('a line\'s words are ready before it shows, and each new line costs at most one request', async ({page}) => {
+        const requests = [];
+        page.on('request', (request) => {
+            if (request.url().endsWith('/Yomitan/Query')) {
+                requests.push(request.url());
+            }
+        });
+
+        await logIn(page);
+        await startJapanese(page, {minimumTime: 0.5});
+        await page.waitForTimeout(12_000);
+        const timings = await page.evaluate(() => window.__yomitanJellyfin.playback.session.timings);
+        expect(timings.length).toBeGreaterThanOrEqual(5);
+
+        // The first line shown had no line before it to get ready on.
+        expect(timings.slice(1).filter(({ready}) => ready).length).toBe(timings.length - 1);
+        expect(requests.length).toBeLessThanOrEqual(timings.length + 4);
+    });
+});
+
 test.describe('secondary subtitles', () => {
     test('the secondary track stays showing, and the overlay moves up out of its way', async ({page}) => {
         await logIn(page);
@@ -566,6 +590,22 @@ test.describe('the next episode', () => {
             disposed: old.disposed,
             overlays: document.querySelectorAll('.yomitan-overlay').length,
         }), firstSession)).toEqual({sameSession: false, disposed: true, overlays: 1});
+    });
+});
+
+test.describe('the next episode, on its own', () => {
+    test('the end of one episode rolls into the next with the right text', async ({page}) => {
+        const episodes = await getEpisodes();
+        await logIn(page);
+        await page.evaluate(async ([first, second]) => {
+            const {Id: id} = (await window.ApiClient.getSessions({deviceId: window.ApiClient.deviceId()}))[0];
+            await window.ApiClient.sendPlayCommand(id, {PlayCommand: 'PlayNow', ItemIds: [first, second]});
+        }, episodes);
+        await page.waitForFunction(() => document.querySelector('.yomitan-lines .yomitan-word'), null, {timeout: 30_000});
+
+        await setVideoTime(page, 29);
+        await expect.poll(() => overlayText(page), {timeout: 30_000}).toContain('二話目');
+        expect(await page.locator('.yomitan-overlay').count()).toBe(1);
     });
 });
 
