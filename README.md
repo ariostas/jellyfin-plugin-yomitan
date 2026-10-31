@@ -23,7 +23,7 @@ You need podman and Node.js 22. .NET and Jellyfin run in containers. Clone with 
 
 ```sh
 scripts/build.sh       # client and plugin, into out/plugin
-scripts/dev.sh up      # http://127.0.0.1:18096/web/, log in with spike / spike
+scripts/dev.sh up      # http://127.0.0.1:18096/web/, log in with spike / spike. Installs out/plugin as is
 scripts/dev.sh logs
 scripts/dev.sh down    # keeps state in .dev/
 scripts/dev.sh reset   # removes it

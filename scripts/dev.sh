@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs a disposable Jellyfin with the built plugin installed.
 #
-#   scripts/dev.sh up      (re)start the server with out/plugin, building it if missing
+#   scripts/dev.sh up      (re)start the server with out/plugin, building only if it is missing
 #   scripts/dev.sh down    stop and remove the container, keeping its state
 #   scripts/dev.sh logs    follow the server log
 #   scripts/dev.sh reset   remove the container and its state
@@ -28,7 +28,7 @@ plugins=$state/config/plugins
 set_base_url() {
     local file=$state/config/config/network.xml
     if [[ -f $file ]]; then
-        sed -i -E "s|<BaseUrl( ?/>\|>.*</BaseUrl>)|<BaseUrl>$base_url</BaseUrl>|" "$file"
+        sed -i -E "s#<BaseUrl( ?/>|>.*</BaseUrl>)#<BaseUrl>$base_url</BaseUrl>#" "$file"
     else
         mkdir -p "$(dirname "$file")"
         printf '<?xml version="1.0" encoding="utf-8"?>\n<NetworkConfiguration>\n  <BaseUrl>%s</BaseUrl>\n</NetworkConfiguration>\n' \
