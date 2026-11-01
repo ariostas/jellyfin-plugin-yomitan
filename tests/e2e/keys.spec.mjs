@@ -838,8 +838,11 @@ for (const {name, tv, use} of LAYOUTS) {
                 await page.locator(button).click();
                 await page.locator(OPEN_MENU).waitFor();
                 await parkMouse(page);
-                // It takes focus when its animation ends, in the TV layout.
+                // It takes focus when its animation ends, in the TV layout. Elsewhere it leaves focus to chance.
                 await page.waitForTimeout(400);
+                if (!tv) {
+                    await page.evaluate(() => document.activeElement?.blur());
+                }
             };
             await expectSameAsJellyfin(page, [
                 {prepare: menu('.btnVideoOsdSettings'), keys: [...arrows, 'Enter', 'Escape', 'Backspace']},

@@ -1,6 +1,6 @@
 // Helpers for the specs that use the keyboard. Keys go in as real input, through the browser and not through the page.
 import {expect} from '@playwright/test';
-import {activeWord, expectPopup, osdShowing, parkMouse, pauseVideo, videoState} from './lookup.mjs';
+import {activeWord, expectPopup, osdShowing, parkMouse, videoState} from './lookup.mjs';
 import {setVideoTime} from './player.mjs';
 
 /** What a remote's keys send, for the ones Playwright's keyboard has no name for. See pressCode. */
@@ -82,12 +82,13 @@ async function showOsd(page) {
     await expect.poll(() => osdShowing(page)).toBe(true);
 }
 
-/** Hides the OSD with a real Escape, which is only safe while it is showing. */
+/**
+ * Hides the OSD, to set up a test. A real Escape could arrive just as the OSD hides itself, and leave the player in the TV
+ * layout, so this stops at the document, as the plugin's own does.
+ */
 async function hideOsdIfShown(page) {
-    if (await osdShowing(page)) {
-        await page.keyboard.press('Escape');
-        await expect.poll(() => osdShowing(page)).toBe(false);
-    }
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', code: 'Escape', keyCode: 27})));
+    await expect.poll(() => osdShowing(page)).toBe(false);
 }
 
 /** Closes jellyfin-web's dialogs, whichever are open. Each is a step in its history. */
@@ -123,25 +124,23 @@ const settled = (page) => page.waitForFunction(() => {
 export async function setPlayer(page, {at, paused, osd = false}) {
     await closeDialogs(page);
     await page.evaluate(() => document.activeElement?.blur());
-    await page.evaluate(() => {
+    await page.evaluate((pause) => {
         const manager = window.__yomitanJellyfin.playback.playbackManager;
         manager.setVolume(50, manager.getCurrentPlayer());
-        // Not awaited: in WebKit, the promise of play() on a video already playing stays pending until the film ends.
         const video = document.querySelector('video.htmlvideoplayer');
-        if (video.paused) {
+        if (pause) {
+            video.pause();
+        } else if (video.paused) {
+            // Not waited for: in WebKit, the promise of play() can stay pending until the film ends.
             video.play().catch(() => {});
         }
-    });
+    }, paused);
     await setVideoTime(page, at);
     await expect.poll(async () => {
         const {time} = await videoState(page);
         return Math.abs(time - at) < 2;
     }).toBe(true);
     await settled(page);
-    if (paused) {
-        await pauseVideo(page);
-    }
-
     await (osd ? showOsd(page) : hideOsdIfShown(page));
 }
 
@@ -166,9 +165,10 @@ export async function effectOf(page, key, {after = 0} = {}) {
         last = text;
         return same;
     }, {intervals: [150]}).toBeGreaterThanOrEqual(3);
+    // Read now, as the OSD hides itself 3 s after the key, and a slow seek can take that long.
+    const {volume, ...state} = JSON.parse(last);
     await settled(page);
-    const {time, volume, ...state} = await jellyfinState(page);
-    const moved = time - before.time;
+    const moved = (await videoState(page)).time - before.time;
     // In WebKit the same key from the same volume sometimes changes it and sometimes not, with the plugin off as well.
     const heard = page.context().browser().browserType().name() === 'webkit' ? {} : {volume};
     return {key, ...state, ...heard, moved: Math.abs(moved) < 6 ? 0 : Math.sign(moved)};

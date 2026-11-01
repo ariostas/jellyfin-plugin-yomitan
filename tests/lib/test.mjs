@@ -32,6 +32,10 @@ export const IGNORED_PAGE_ERRORS = [
         why: 'jellyfin-web\'s page scroller in WebKit, when a test moves on from the home screen. No video has played, so the engine is not loaded',
     },
     {
+        pattern: /The operation was aborted/,
+        why: 'jellyfin-web\'s own play() in WebKit, when a pause cuts it off. It has no catch, and it happens with the plugin off. The plugin\'s all do',
+    },
+    {
         pattern: /ActionSheet closed without resolving/,
         why: 'jellyfin-web\'s menus reject a promise nobody handles when they close with no choice made. It is the same with the plugin off',
     },
