@@ -39,6 +39,8 @@ export default defineConfig({
         {
             name: 'webkit',
             testMatch: everyBrowser,
+            // Headless WPE sometimes dies between tests, before a test has started. A retry shows up as flaky in the results.
+            retries: 1,
             use: {...devices['Desktop Safari']},
         },
         {
