@@ -1,6 +1,7 @@
 // The dashboard page, through its real UI, as the admin signed in. Everything a dictionary says about itself is hostile
 // here: a zip's title goes on screen, and has to stay text.
-import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {statSync} from 'node:fs';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {createUser, credentials, deleteUser, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
 import {expectPopup, isPaused, LINES, moveToWord, parkMouse, showLine, startLookupFilm} from '../lib/lookup.mjs';
@@ -316,11 +317,29 @@ test.describe('real dictionaries', () => {
     });
 });
 
-test('the upload takes the file by its path, so a big one needs no memory here', async ({page}) => {
-    test.skip(!process.env.YOMITAN_BIG_FILE, 'Needs YOMITAN_BIG_FILE, a zip of 500 MB or more.');
+test('a file over 500 MB goes up and the page does not grow with it', async ({page, browserName}) => {
+    test.skip(!process.env.YOMITAN_BIG_FILE || browserName !== 'chromium', 'Needs YOMITAN_BIG_FILE, a dictionary of 500 MB or more, and Chromium.');
     test.setTimeout(300_000);
+    const {size} = statSync(process.env.YOMITAN_BIG_FILE);
+    expect(size).toBeGreaterThan(500e6);
     await openPage(page);
-    await upload(page, process.env.YOMITAN_BIG_FILE);
-    await expect(page.locator('#yomitanTransferText')).toContainText('done', {timeout: 240_000});
-    expect(readFileSync(process.env.YOMITAN_BIG_FILE).length).toBeGreaterThan(5e8);
+
+    // The memory of every renderer process on this machine, so it can only overstate what this page uses.
+    const renderers = () => execFileSync('ps', ['-eo', 'rss,args'], {encoding: 'utf8'}).split('\n')
+        .filter((line) => line.includes('--type=renderer')).map((line) => Number.parseInt(line, 10) * 1024);
+    const before = Math.max(...renderers());
+    let peak = before;
+    const sampler = setInterval(() => {
+        peak = Math.max(peak, ...renderers());
+    }, 200);
+    try {
+        await upload(page, process.env.YOMITAN_BIG_FILE);
+        await expect(page.locator('#yomitanTransferText')).toContainText('done', {timeout: 200_000});
+        await expect(message(page)).toContainText('is installed', {timeout: 200_000});
+    } finally {
+        clearInterval(sampler);
+    }
+
+    console.log(`a file of ${size} bytes: largest renderer ${before} bytes before, ${peak} at the peak`);
+    expect(peak - before).toBeLessThan(size / 4);
 });

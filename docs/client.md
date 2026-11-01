@@ -2,16 +2,19 @@
 
 How the code that runs in jellyfin-web fits together. The server's side of the conversation is in [api.md](api.md).
 
-## Two scripts
+## The scripts
 
 | File | Loaded | Size | Holds |
 | --- | --- | --- | --- |
-| `client.js` | On every page, by the injected tag | About 2 KB | `src/main.js`, `src/player-hook.js`, `src/settings.js` |
-| `engine.js` | When a video first starts, unless the plugin is turned off | About 385 KB, or 107 KB as Jellyfin compresses it | Everything else |
+| `client.js` | On every page, by the injected tag | About 5 KB compressed | `src/main.js`, the settings store, the OSD's button, the link to the settings page |
+| `engine.js` | When a video starts with the feature on | About 400 KB, or 110 KB as Jellyfin compresses it | The Translator, the overlay, the popup and input |
+| `settings-page.js` | When someone opens their settings | About 10 KB | `src/settings-page/` |
+| `yomitan-admin.js` | When an admin opens the dashboard page | About 10 KB | `src/admin/`. jellyfin-web imports this one |
 
-`client/build.mjs` builds both. The engine's content hash is compiled into the loader, and the server computes the same
-hash, so `engine.js?v=<hash>` is cached for good and a new build is a new URL. Both are public, like the rest of
-jellyfin-web's scripts: neither holds data, and everything they ask the server for goes through the signed-in API.
+`client/build.mjs` builds them all. The content hashes of `engine.js` and `settings-page.js` are compiled into the loader,
+and the server computes the same hash, so `engine.js?v=<hash>` is cached for good and a new build is a new URL. They are
+public, like the rest of jellyfin-web's scripts: none holds data, and everything they ask the server for goes through the
+signed-in API.
 
 The bundle holds Yomitan's code unmodified, from the submodule. Only Japanese is kept, by replacing the one module that
 lists the languages: `src/engine/language-descriptors.js`. `tests/e2e/engine.spec.mjs` checks that entry against
@@ -20,9 +23,16 @@ Yomitan's, and the trimmed Translator's results against the full one's.
 ## Modules
 
 ```text
-main.js                 waits for a video, then imports the engine
+main.js                 keeps the settings, and imports the engine for a video with the feature on
 player-hook.js          finds this tab's playbackManager
+player-toggle.js        the button in the OSD
 settings.js             the one settings store, created here and handed to the engine
+ui/
+  dom.js                builds elements, and never from a string of markup
+  notice.js             a short message over whatever is on screen
+  settings-link.js      the way to the settings page, in jellyfin-web's Settings
+settings-page/          a user's own settings
+admin/                  the dashboard page: its markup, its script and its words for the API's errors
 engine-entry.js         the engine script's exports
 playback/
   controller.js         follows playback, keeps one session for the current track
@@ -51,6 +61,7 @@ popup/
   sanitize.js           makes a dictionary's content safe
 engine/
   engine.js             the Translator, on the server's dictionaries
+  dictionary-set.js     which dictionaries a user looks words up in, and in what order
   remote-db.js          DictionaryDatabase over HTTP
   term-store.js         batches term lookups, and answers as the server would
   query-client.js       POST /Yomitan/Query
@@ -64,28 +75,119 @@ directly in Node.
 ## Settings
 
 `window.__yomitanJellyfin.settings` is the only store. The loader creates it, and passes it down to whatever needs it, so
-there is one place to read and one to change. It keeps its values in `localStorage` for now, and Phase 6 replaces that
-and adds the UI. Inside the bundle, take it from the session or the controller.
+there is one place to read and one to change. Inside the bundle, take it from the session or the controller.
 
 ```js
 settings.get('hoverDelayMs');
 settings.set('enabled', false);
 settings.addEventListener('change', ({detail: {name, value}}) => {});
+settings.addEventListener('syncstate', ({detail: {state}}) => {});
+settings.syncState;   // 'saved', 'saving', 'retrying' or 'refused'
+settings.userId;      // Whose these are, or null with nobody signed in, when they are the defaults
 ```
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `enabled` | `true` | Off means the engine does not load, and playback is what jellyfin-web does alone. Takes effect at once |
+| `enabled` | `false` | Off means the engine does not load, and playback is what jellyfin-web does alone. Takes effect at once |
 | `hoverDelayMs` | 200 | How long the mouse has to rest on a word before anything happens |
 | `hoverGraceMs` | 300 | How long the popup survives the mouse leaving it and the word |
-| `upOnlyEntry` | `false` | Only Up enters [word mode](#the-keyboard-and-a-remote), which leaves Left and Right to the OSD's buttons while paused. No UI until Phase 6 |
+| `upOnlyEntry` | `false` | Only Up enters [word mode](#the-keyboard-and-a-remote), which leaves Left and Right to the OSD's buttons while paused |
+| `fontScale` | 100 | The size of the lines, in percent of what fits the screen |
+| `dictionaryOrder` | `[]` | Titles in the order this user wants them. The rest follow in import order |
+| `disabledDictionaries` | `[]` | Titles this user has turned off. Anything else is on |
 
-**`enabled` is on by default, against [PLAN.md](../PLAN.md)'s decision 4.** There is no UI to turn it on until Phase 6,
-which has to change the default when it adds one. It is harmless meanwhile: nothing happens without a Japanese subtitle
-track and an installed dictionary.
+**Off by default**, as [PLAN.md](../PLAN.md)'s decision 4 says: the overlay replaces ASS styling with a plain line, so
+turning it on is a choice. A new user sees nothing of the plugin but the button in the OSD and the link in Settings.
 
-With it off, the loader stays on the page, keeps its one listener on `playbackManager`, and that is all. The video has
-the same listeners as with the plugin blocked outright, which `tests/e2e/settings.spec.mjs` counts.
+With it off, the loader stays on the page with two listeners on `window` (`viewshow` and `visibilitychange`) and three on
+`playbackManager`, and polls which track is selected while a video plays, for the button. The video and the document have
+the same listeners as with the plugin blocked outright, which `tests/e2e/settings.spec.mjs` counts. `GET /Yomitan/Settings`
+is its only request, apart from one `Stream.js` for a text track with no language tag, which only its text can
+decide.
+
+### Where they live
+
+The server holds them, per user, and [api.md](api.md#settings) has the rules. This browser keeps the last copy it saw, in
+`localStorage`, under `yomitan.settings.<user id>`, along with any change the server has not taken yet. So:
+
+- **Nothing waits on the network.** A value is in memory or `localStorage`, and a video starts on that. What the server
+  says arrives later, as `change` events, and everything already follows those. With no cache and no answer, the defaults
+  hold, which means off.
+- **A change on another device** is asked for when a video starts, which is the promise, and also when someone signs in,
+  opens the settings page, or comes back to the tab, at most once in 30 s. A video playing on two devices at once does not
+  poll: the second one sees it at its next start.
+- **A write** goes out 250 ms after the last change, naming only what changed, so two devices changing different settings
+  both keep theirs. A value applies here at once. If the network or the server fails, it stays in the cache marked as
+  waiting, it is sent again after 2, 5, 15, 30 and then every 60 s, the first time after any reload, and `syncState` is
+  `retrying`, which shows a notice and on the settings page. A 4xx is a refusal, so it is not repeated: the server's value
+  comes back and `syncState` is `refused`, with a notice. A 401 or 403 waits for the next page load.
+- **Users never mix.** Every read and write of the cache goes through the current user's id, and `follow()` swaps the whole
+  set as soon as someone else is signed in: on every page's `viewshow`, and before a video starts. The server files a
+  write under its token, so a write that is due checks that the user it belongs to is still the one signed in. If not, it
+  stays in their cache until they are back. An answer for a user who has left is dropped, and `revision` drops an answer
+  overtaken by a newer one.
+
+### The dictionaries a user chooses
+
+`chooseDictionaries()` in `engine/dictionary-set.js` is the one decision, and `Engine` applies it to everything: the
+`enabledDictionaryMap`, the Translator's `index` for each dictionary, `TermStore`'s requests, `lookupKanji`, and so what the
+segmenter sees, since it only reads the engine. Nothing asks the server about a dictionary that is off.
+
+- **Order is priority**: the first dictionary on gets `index` 0, which is what Yomitan sorts entries by. In the extension
+  this is the order of the dictionary list.
+- **A main dictionary is not a setting.** `mainDictionary` only matters to the Translator's `merge` mode, and the popup and
+  segmenter use `group` and `simple`. It is the first dictionary on.
+- **A dictionary installed after a user saved is on, and last.** That is why the setting is a list of what is off, and
+  not of what is on: otherwise an admin's new upload would do nothing for anyone who ever opened their settings.
+- **A deleted dictionary** just stops matching. Its title may stay in the saved lists, where it means nothing, until the
+  next change on the settings page, which only writes titles that are installed. Installed again under the same title, it
+  comes back as the user left it.
+- **A change** while playing is treated as a replaced dictionary: the caches go, the popup closes, and the line is split
+  again.
+- **With nothing left to split a line** the session gives up, as with no dictionaries at all: nothing installed, all of it
+  off, or only kanji or frequency dictionaries on, since `Segmenter` needs words. Jellyfin's line comes back and a notice
+  says which of the three it was. Turning a dictionary back on starts the session again without restarting the video.
+
+### The button in the player
+
+`player-toggle.js` puts a button right after `.btnSubtitles`, in the OSD of the `.page` that is showing. It looks at the
+selected track every 500 ms during video playback, and it is only there for a text track that is Japanese, by the same
+`trackContent()` and `isJapaneseTrack()` the session uses. With the feature off the session does not exist, so the loader
+decides this itself. It presses `enabled`, and everything else follows from that.
+
+It is a plain `button` with the classes of its neighbours, so jellyfin-web's focus handling takes it as one more stop in
+the row, and a tap or Enter clicks it. If `.btnSubtitles` is not found, there is no button, and an error stops following
+until the next video. If `enabled` is on and the session reports a `problem`, the button turns amber, its label says so,
+and a notice says what is wrong.
+
+### The settings page
+
+jellyfin-web's route for a plugin's page, `#/configurationpage`, is inside its admin routes, and bounces anyone else. So
+everyone's own settings are not a route. `settings-link.js` adds a link to Settings (`#/mypreferencesmenu`), the page behind
+the user's picture, which every signed-in user has in every layout, after `.lnkSubtitlePreferences`. `settings-page.js`
+then covers the screen from the body, adds one step to the history so that Back closes it, and works only through the store.
+An admin looking at another user's Settings gets no link, since this page can only ever be one's own.
+
+It is plain DOM, not a shadow root, so that jellyfin-web's focus handling can walk it with a remote. Enter on a checkbox
+presses it, which browsers do not do by themselves.
+
+### The dashboard page
+
+`Plugin.GetPages()` serves `admin.html` and `yomitan-admin.js` through `/web/ConfigurationPage`, and the page names its
+script in `data-controller`, which is how jellyfin-web loads one. It is what an admin finds under Plugins, and in the
+dashboard's menu.
+
+- The upload is an `XMLHttpRequest` with the `File` as its body, which the browser streams from disk, and it is the only way
+  to get upload progress. `tests/e2e/admin-page.spec.mjs` checks that nothing reads the file, and with `YOMITAN_BIG_FILE`
+  sends one of over 500 MB.
+- Two bars: the transfer from the request, and the import from polling the job.
+- A title that is installed fails with `already_exists`, and the page then offers the same file again with `replace=true`.
+- Delete asks in the row itself, not in one of jellyfin-web's dialogs.
+- `admin/messages.js` has plain words for each error code, and the contract test checks there are no gaps.
+- There is no ordering here. Each user has one, so one at the server would only be a default, and import order does that.
+
+**Content security.** jellyfin-web sets no content security policy, and the server sends none, so inline styles, inline
+event handlers and modules all load. Nothing here relies on inline handlers, and titles only ever go in as text.
 
 ## What drives it
 
@@ -132,18 +234,21 @@ twice over about 2 s on a network error or a 5xx, so a short drop only delays a 
 | Image or burned-in subtitles | `inactive`, logged once at debug level, no fetch |
 | `Stream.js` fails | `inactive`, native line stays |
 | ASS script fails | Falls back to `Stream.js`, which has no layers or styles |
-| Query fails or no dictionaries, at the start | `inactive`, native line stays |
+| Query fails, at the start | `inactive`, native line stays, and a notice says so |
+| Nothing usable to look words up in | The same. See [the dictionaries a user chooses](#the-dictionaries-a-user-chooses) |
 | Query fails later | Retried, then overlay removed and native line restored |
 | A lookup fails | Logged, popup closed, playback resumed if the plugin paused it. The session carries on |
 | A dictionary's entry cannot be drawn | The same |
-| Engine script fails to load | Logged, nothing else happens |
+| Engine script fails to load | Logged, a notice says so, and the next start tries again |
+| Settings cannot be fetched | The cache holds, or the defaults, and nothing shows |
+| A setting cannot be saved | It applies here, a notice says so, and it is sent again |
 | `Events` never appears | Logged at debug level, nothing else happens |
 
 ## Subtitles
 
 **Only Japanese.** `isJapaneseTrack(stream, cues)` in `subtitles/language.js` is the one decision. A Japanese tag wins,
 any other language tag loses, and an untagged track is judged on its text: at least 30% of its letters must be kana or
-kanji, and at least 15% of those must be kana, which rules out Chinese. Phase 6's setting goes here.
+kanji, and at least 15% of those must be kana, which rules out Chinese.
 
 **ASS.** The original script comes from `Stream.ass`, the file Jellyfin's own renderer reads, because `Stream.js` drops
 layers, styles and effects. If that fails, `Stream.js` still works: its tags survive, so only style information is lost.
@@ -393,7 +498,9 @@ covers the word. Long entries scroll inside it. It moves on `resize`, which cove
 
 ## For later phases
 
-`window.__yomitanJellyfin.playback` is the `PlaybackController`, present from the first video on. It is an `EventTarget`:
+`window.__yomitanJellyfin.playbackManager` is this tab's `playbackManager`, from the first playback event on, with the
+feature on or off. `window.__yomitanJellyfin.playback` is the `PlaybackController`, present from the first video with the
+feature on. It is an `EventTarget`:
 
 | Event | `detail` | When |
 | --- | --- | --- |
@@ -408,6 +515,7 @@ const {playback} = window.__yomitanJellyfin;
 const {session, engine} = playback;
 
 session.state;              // 'idle', 'active' or 'inactive'
+session.problem;            // Why it is inactive, if someone can do something: 'none', 'disabled', 'no-terms' or 'failed'
 session.cues;               // the cues on screen now
 session.words.get(cue.id);  // their words, once known
 session.time;               // the current time in the subtitle file, offset included

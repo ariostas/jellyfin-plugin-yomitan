@@ -194,8 +194,9 @@ seeks, track switches and transcoding.
 is off. Real phone and Android app checks are left for the user, listed in the README.
 
 **Phase 4 result:** done, with these changes to the plan. The overlay moved out of the video's container to a layer on the
-body, because jellyfin-web's page covers the container and nothing inside it can be hit. `enabled` defaults to on until
-Phase 6 has a way to turn it on, against decision 4. See [docs/client.md](docs/client.md#using-a-word).
+body, because jellyfin-web's page covers the container and nothing inside it can be hit. `enabled` defaulted to on until
+Phase 6 gave people a way to turn it on, and it has been off since, as decision 4 says. See
+[docs/client.md](docs/client.md#using-a-word).
 
 ### Phase 5: Keyboard and remote navigation
 
@@ -222,6 +223,21 @@ The cursor stops at the ends of the words on screen, and does not wrap. See
 
 **Exit:** a non-admin user can change settings on one device and have them apply on another.
 
+**Phase 6 result:** done, and the exit check runs for real: a non-admin changes settings on the page in one browser context,
+and the other shows it in what its video does. Beyond the list above and changes to it:
+
+- `enabled` is off by default, and the shared test login turns it on through the real setting.
+- Settings have their own small database, because an import holds the dictionary database's write transaction for minutes.
+- A save names only what changed, so two devices changing different settings both keep theirs.
+- jellyfin-web only routes a plugin's page for admins, so the user's page is not a route. The client adds a link to Settings
+  behind the user's picture, and the page covers the screen from the body.
+- Server-level ordering in the list above was dropped. Each user has an order, so all it could add is a default, and import
+  order is that. Yomitan's main dictionary is not a setting either: only its `merge` mode reads it, and nothing here uses that.
+- The list of dictionaries is stored as what is off, so a new upload is on for everyone, last in their order.
+- Only kanji or frequency dictionaries on means nothing can split a line, so that goes back to Jellyfin's line, with a notice.
+
+See [docs/client.md](docs/client.md#settings).
+
 ### Phase 7: Packaging
 
 - Plugin repository `manifest.json`, so users add one URL.
@@ -229,7 +245,11 @@ The cursor stops at the ends of the words on screen, and does not wrap. See
 - Scheduled CI against the latest Jellyfin image. The plugin depends on unofficial DOM: `video.htmlvideoplayer`,
   `.videoOsdBottom`, `.osdControls`, `.videoOsd-appBar`, `.videoSubtitlesInner`, `.libassjs-canvas`, `window.ApiClient`,
   `window.Events` and its `SHOW_VIDEO_OSD` event, `.page:not(.hide)`, `.dialogContainer .dialog.opened`, the `layout-tv`
-  class, and Escape on the document hiding the OSD. Failures here are the early warning.
+  class, and Escape on the document hiding the OSD. Since Phase 6 also `.btnSubtitles` inside `.videoOsdBottom` and the
+  button classes of the OSD, `#myPreferencesMenuPage` and `.lnkSubtitlePreferences`, the `viewshow` event reaching `window`,
+  `ApiClient.getCurrentUserId()`, `accessToken()`, `getUrl()` and `setRequestHeaders()`, `data-controller="__plugin/..."` and
+  the `.page.type-interior` and `.content-primary` classes on the dashboard page, and `IAuthorizationContext` on the
+  server. Failures here are the early warning.
 - README listing client support honestly, including the Android player setting.
 
 ## Not in scope for v1

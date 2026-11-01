@@ -3,12 +3,22 @@
 A Jellyfin plugin that adds [Yomitan](https://github.com/yomidevs/yomitan)-style dictionary lookups to subtitles
 in jellyfin-web. No fork of Jellyfin is needed.
 
-This is early work. During playback of a Japanese subtitle track, the plugin replaces the line with its own, split into
+This is early work. During playback of a Japanese subtitle track, the plugin can replace the line with its own, split into
 words, using Yomitan's engine and dictionaries on the server. Hover a word, or tap it on a phone, and the video pauses and
 Yomitan's popup shows that word. Move away, or tap elsewhere, and it resumes. While paused, a keyboard or a TV remote in
 jellyfin-web can walk the words too: Left, Right or Up starts, Left and Right move, Up and Down scroll the popup, Back leaves
-and Enter resumes. There is no settings page or dictionary upload UI yet. [PLAN.md](PLAN.md) has the roadmap, [docs/api.md](docs/api.md) is the HTTP contract, and
+and Enter resumes. [PLAN.md](PLAN.md) has the roadmap, [docs/api.md](docs/api.md) is the HTTP contract, and
 [docs/client.md](docs/client.md) describes the client.
+
+## Using it
+
+1. **An admin adds dictionaries**: Dashboard, Yomitan, in the Plugins section of the menu. A dictionary is a zip in Yomitan's
+   format, such as [JMdict](https://github.com/yomidevs/jmdict-yomitan). None ship with the plugin. Everyone on the
+   server shares them.
+2. **Each user turns it on.** It is off by default, because it replaces styled subtitles with a plain line. During playback
+   of a Japanese text subtitle track, the 文A button next to the subtitle button in the player turns it on and off at once.
+3. **Each user chooses the rest** under their picture, Settings, Yomitan: which dictionaries to use and in what order, the
+   size of the lines, the keys, and the hover delay. It follows them to every device, by the next time a video starts there.
 
 ## Client support
 
@@ -32,7 +42,8 @@ and the Android app has never been run. These checks are left for a person.
 player**. The default is the Integrated player, which is ExoPlayer: it does not load jellyfin-web's player, so the plugin
 cannot do anything there. Subtitles will look normal, and no word will respond.
 
-Then, in Android Chrome and again in the Android app, with a Japanese subtitle track and a dictionary installed:
+Then, in Android Chrome and again in the Android app, with a Japanese subtitle track, a dictionary installed and the
+feature turned on with the button in the player:
 
 1. The line is split into words, and Jellyfin's own line is gone. Try an SRT and an ASS file.
 2. Tapping a word pauses and shows the popup, within about a third of a second on your network.
@@ -48,13 +59,16 @@ Then, in Android Chrome and again in the Android app, with a Japanese subtitle t
 11. Pressing the phone's Back button with a popup open behaves sensibly, and leaving the player leaves nothing behind.
 12. Leave a popup open, lock the phone, come back: the video can still be resumed.
 13. On mobile data, a lookup is still quick enough to use.
+14. The button next to the subtitle button in the player is easy to hit, and turns the feature on and off with the video
+    going on.
+15. Settings, Yomitan opens from your picture. The phone's Back button closes it and stays in Settings.
 
 ## What to check on a real TV
 
 The automated tests press real keys in jellyfin-web's TV layout, at 1920x1080, in desktop browsers. jellyfin-web treats a
 remote's buttons as the same key events, but no physical remote or real TV has been tried. Select **TV** under Settings,
-Display, Display mode if the device does not choose it by itself, and with a Japanese subtitle track and a dictionary
-installed, on a TV browser that runs the web UI from the server:
+Display, Display mode if the device does not choose it by itself, and with a Japanese subtitle track, a dictionary installed and the
+feature on, on a TV browser that runs the web UI from the server:
 
 1. Enter pauses and shows the OSD. Left, Right or Up then hides it and marks the first word of the line, with its popup.
 2. The mark is easy to find and the popup easy to read from where you sit.
@@ -63,6 +77,9 @@ installed, on a TV browser that runs the web UI from the server:
 5. The remote's Back button leaves the words, stays paused and stays in the player, even when held for a moment. A second
    press does what Back always does there.
 6. Enter on a word resumes, and nothing else happens.
+7. With the OSD open, Left and Right reach the button next to the subtitle button, unless the video is paused, when they
+   walk the words. OK turns the feature on and off.
+8. Settings, Yomitan can be walked with the arrows, OK presses, and Back closes it.
 
 ## Development
 
@@ -100,6 +117,9 @@ Playwright's WebKit is not Safari either.
 Every spec that plays video fails on an uncaught error in the page. `tests/lib/test.mjs` does that, and lists what it
 excuses and why.
 
+The tests turn the feature on through the real setting: `logIn()` in `tests/lib/jellyfin.mjs` saves the user's settings on
+the server first, and `logIn(page, {settings: null})` leaves a new user as they are.
+
 To run Playwright against a server that is already up, pass it the same `JF_*` variables:
 
 ```sh
@@ -114,7 +134,9 @@ using the test data in the submodule. To run the same comparison on real diction
 cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/parity-real.spec.mjs
 ```
 
-The same directory runs the segmenter's hand-checked corpus. `tests/e2e/real-film.spec.mjs` takes real subtitle files
+The same directory drives the dashboard page and the choice of dictionaries with real ones, in
+`tests/e2e/admin-page.spec.mjs` and `tests/e2e/dictionary-choice.spec.mjs`. `YOMITAN_BIG_FILE` names a dictionary of over 500 MB
+for the former, which sends it and measures the page's memory. The same directory runs the segmenter's hand-checked corpus. `tests/e2e/real-film.spec.mjs` takes real subtitle files
 and a real film, which are not in this repository either, and its header lists what it needs:
 
 ```sh

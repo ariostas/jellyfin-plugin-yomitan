@@ -29,7 +29,7 @@ export const IGNORED_PAGE_ERRORS = [
     },
     {
         pattern: /t\.scrollHandler is not a function/,
-        why: 'jellyfin-web\'s page scroller in WebKit, when a test moves on from the home screen. No video has played, so the engine is not loaded',
+        why: 'jellyfin-web\'s emby-scrollbuttons in WebKit: its attachedCallback calls this.scrollHandler in the next frame, and a home screen left within that frame has set it to null. It happens at the same rate with the plugin blocked',
     },
     {
         pattern: /The operation was aborted/,
