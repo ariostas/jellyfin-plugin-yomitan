@@ -13,7 +13,7 @@ import {
     playStateCounts, popupState, serverPaused, showLine, startLookupFilm, videoState, wordCentre,
 } from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {expectTrack, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
+import {expectTrack, setSubtitleOffset, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
@@ -58,6 +58,13 @@ async function pauseWithKey(page, tv) {
     await expect.poll(() => osdShowing(page)).toBe(true);
 }
 
+/** Resumes as another device would. Nothing waits for play(): see setPlayer. */
+function resumeVideo(page) {
+    return page.evaluate(() => {
+        document.querySelector('video.htmlvideoplayer').play().catch(() => {});
+    });
+}
+
 /** Starts in word mode on the first word of a line. */
 async function enterWordMode(page, options = {}) {
     const sessionId = await start(page, options);
@@ -66,6 +73,9 @@ async function enterWordMode(page, options = {}) {
     await expect.poll(() => inWordMode(page)).toBe(true);
     return sessionId;
 }
+
+/** The most the popup is from its word, with the line's own spacing. */
+const POPUP_GAP = 14;
 
 const onPlayer = (page) => page.evaluate(() => location.hash.startsWith('#/video') && document.querySelector('video.htmlvideoplayer') !== null);
 
@@ -78,7 +88,8 @@ for (const {name, tv, use} of LAYOUTS) {
             const sessionId = await start(page, {tv, line: LINES.coffee});
             await countPlayState(page);
             await pauseWithKey(page, tv);
-            await expect.poll(() => serverPaused(sessionId)).toBe(true);
+            // A first playback on a new server can take its time here.
+            await expect.poll(() => serverPaused(sessionId), {timeout: 20_000}).toBe(true);
             const {time} = await videoState(page);
 
             await page.keyboard.press('ArrowRight');
@@ -125,7 +136,7 @@ for (const {name, tv, use} of LAYOUTS) {
             await expect.poll(() => isPaused(page)).toBe(false);
             await expectLeft(page);
             await expectNoPopup(page);
-            await expect.poll(() => serverPaused(sessionId)).toBe(false);
+            await expect.poll(() => serverPaused(sessionId), {timeout: 20_000}).toBe(false);
             await page.waitForTimeout(400);
             expect(await isPaused(page)).toBe(false);
             expect(await playStateCounts(page)).toEqual({pause: 1, play: 1});
@@ -430,7 +441,7 @@ test.describe('entering', () => {
         expect(y).toBeGreaterThan(raised);
         const {box} = await popupState(page);
         expect(top - box.bottom).toBeGreaterThanOrEqual(0);
-        expect(top - box.bottom).toBeLessThan(40);
+        expect(top - box.bottom).toBeLessThan(POPUP_GAP);
     });
 
     test('a key held down while the video pauses does not fall into word mode', async ({page}) => {
@@ -486,18 +497,32 @@ test.describe('starting from a pointer\'s popup', () => {
         expect(y).toBeGreaterThan(raised);
         const {box} = await popupState(page);
         expect(top - box.bottom).toBeGreaterThanOrEqual(0);
-        expect(top - box.bottom).toBeLessThan(40);
+        expect(top - box.bottom).toBeLessThan(POPUP_GAP);
     });
 
     test('a popup the mouse was leaving stays once a key has taken it', async ({page}) => {
         await start(page);
+        // Time for a key in the grace period, in a browser that delivers moves up to 300 ms apart.
+        await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverGraceMs', 1500));
         await moveToWord(page, '学校');
         await expectPopup(page, '学校');
         await parkMouse(page);
         await page.keyboard.press('ArrowUp');
         await expect.poll(() => inWordMode(page)).toBe(true);
-        await page.waitForTimeout(700);
+        await page.waitForTimeout(1800);
         await expectCursor(page, '学校');
+    });
+
+    test('once word mode is over, a mouse that barely moved is a mouse again', async ({page}) => {
+        await start(page);
+        await pauseVideo(page);
+        const {x, y} = await moveToWord(page, '学校');
+        await page.keyboard.press('ArrowRight');
+        await expectCursor(page, '昨日');
+        await page.keyboard.press('Escape');
+        await expectLeft(page);
+        await page.mouse.move(x + 3, y);
+        await expectPopup(page, '学校');
     });
 
     test('a hover about to open does not land on top of the cursor', async ({page}) => {
@@ -613,7 +638,7 @@ test.describe('word mode ends with', () => {
     test('resuming from elsewhere, like another device', async ({page}) => {
         await enterWordMode(page);
         await expectCursor(page, '昨日');
-        await page.evaluate(() => document.querySelector('video.htmlvideoplayer').play());
+        await resumeVideo(page);
         await expectLeft(page);
         await expectNoPopup(page);
     });
@@ -648,6 +673,37 @@ test.describe('word mode ends with', () => {
         const before = (await videoState(page)).time;
         await page.keyboard.press('ArrowRight');
         await expect.poll(async () => (await videoState(page)).time).toBeGreaterThan(before + 5);
+    });
+
+    test('a new subtitle offset that takes the line away', async ({page}) => {
+        await enterWordMode(page);
+        await expectCursor(page, '昨日');
+        await setSubtitleOffset(page, 15);
+        await expectLeft(page);
+        await expectNoPopup(page);
+        expect(await isPaused(page)).toBe(true);
+    });
+
+    test('resuming, or a seek, before a cursor waiting for its line has landed', async ({page}) => {
+        await start(page);
+        await pauseVideo(page);
+        await page.route('**/Yomitan/Query', async (route) => {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 1500);
+            });
+            await route.continue().catch(() => {});
+        });
+        await setVideoTime(page, LINES.long.at);
+        await page.waitForFunction(() => document.querySelector('.yomitan-line') && !document.querySelector('.yomitan-word') && !document.querySelector('video.htmlvideoplayer').seeking);
+        await page.keyboard.press('ArrowRight');
+        expect(await inWordMode(page)).toBe(true);
+        await resumeVideo(page);
+        await expect.poll(() => inWordMode(page)).toBe(false);
+        await page.waitForFunction(() => document.querySelector('.yomitan-word'));
+        await page.waitForTimeout(300);
+        expect(await activeWord(page)).toBeNull();
+        expect(await isPaused(page)).toBe(false);
+        await page.unrouteAll({behavior: 'ignoreErrors'});
     });
 
     test('a line that never splits, while the cursor waits for it', async ({page}) => {
@@ -717,6 +773,8 @@ async function expectSameAsJellyfin(page, cases) {
 }
 
 const LINE = LINES.twoLines.at;
+/** jellyfin-web's position slider seeks a second after its last key. */
+const SLIDER_DELAY = 1600;
 const OPEN_MENU = '.dialogContainer .dialog.opened';
 
 async function focusOn(page, selector) {
@@ -737,7 +795,7 @@ for (const {name, tv, use} of LAYOUTS) {
             await expectSameAsJellyfin(page, [
                 // Escape with the OSD hidden leaves the player in the TV layout, so it has its own test. Left and Right
                 // there go through the position slider, which seeks a second later.
-                {prepare: hidden, keys: [...arrows, 'Enter', 'Backspace', ...tv ? [] : ['Escape']], after: tv ? 1200 : 0},
+                {prepare: hidden, keys: [...arrows, 'Enter', 'Backspace', ...tv ? [] : ['Escape']], after: tv ? SLIDER_DELAY : 0},
                 {prepare: shown, keys: [...arrows, 'Enter', 'Backspace', 'Escape']},
             ]);
         });
@@ -768,8 +826,8 @@ for (const {name, tv, use} of LAYOUTS) {
             };
 
             await expectSameAsJellyfin(page, [
-                {prepare: between, keys: arrows},
-                {prepare: unknown, keys: arrows},
+                {prepare: between, keys: arrows, after: tv ? SLIDER_DELAY : 0},
+                {prepare: unknown, keys: arrows, after: tv ? SLIDER_DELAY : 0},
             ]);
         });
 
@@ -824,7 +882,7 @@ for (const {name, tv, use} of LAYOUTS) {
                 await focusOn(page, '.osdPositionSlider');
             };
             // A slider takes a key's seek a second later, in case another key follows.
-            await expectSameAsJellyfin(page, [{prepare: slider, keys: arrows, after: 1200}]);
+            await expectSameAsJellyfin(page, [{prepare: slider, keys: arrows, after: SLIDER_DELAY}]);
         });
 
         test('Up-only: Left and Right stay Jellyfin\'s until Up enters', async ({page}) => {

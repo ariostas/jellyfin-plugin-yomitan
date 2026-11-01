@@ -28,6 +28,10 @@ export const IGNORED_PAGE_ERRORS = [
         why: 'jellyfin-web\'s home screen in WebKit, whose requests are cut off when a test goes straight to the player',
     },
     {
+        pattern: /t\.scrollHandler is not a function/,
+        why: 'jellyfin-web\'s page scroller in WebKit, when a test moves on from the home screen. No video has played, so the engine is not loaded',
+    },
+    {
         pattern: /ActionSheet closed without resolving/,
         why: 'jellyfin-web\'s menus reject a promise nobody handles when they close with no choice made. It is the same with the plugin off',
     },

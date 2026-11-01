@@ -11,7 +11,7 @@ export const REMOTE_KEYS = {
     goBack: {keyCode: 0, key: 'GoBack'},
 };
 
-/** The Display mode setting's value in localStorage, read when the page loads. `spec/keys` also selects it in the UI. */
+/** What selecting TV under Display mode stores, read when the page loads. keys.spec.mjs checks that it is, in the UI. */
 export function useTvLayout(page) {
     return page.addInitScript(() => localStorage.setItem('layout', 'tv'));
 }
@@ -93,10 +93,17 @@ async function hideOsdIfShown(page) {
 /** Closes jellyfin-web's dialogs, whichever are open. Each is a step in its history. */
 async function closeDialogs(page) {
     const open = () => page.locator('.dialogContainer .dialog.opened').count();
+    const any = await open() > 0;
     while (await open() > 0) {
         const before = await open();
         await page.evaluate(() => history.back());
         await expect.poll(open).toBeLessThan(before);
+    }
+
+    if (any) {
+        // It gives focus back when its animation ends, which would undo anything done before then.
+        await expect.poll(() => page.locator('.dialogContainer').count()).toBe(0);
+        await page.waitForTimeout(150);
     }
 }
 
@@ -116,10 +123,14 @@ const settled = (page) => page.waitForFunction(() => {
 export async function setPlayer(page, {at, paused, osd = false}) {
     await closeDialogs(page);
     await page.evaluate(() => document.activeElement?.blur());
-    await page.evaluate(async () => {
+    await page.evaluate(() => {
         const manager = window.__yomitanJellyfin.playback.playbackManager;
         manager.setVolume(50, manager.getCurrentPlayer());
-        await document.querySelector('video.htmlvideoplayer').play();
+        // Not awaited: in WebKit, the promise of play() on a video already playing stays pending until the film ends.
+        const video = document.querySelector('video.htmlvideoplayer');
+        if (video.paused) {
+            video.play().catch(() => {});
+        }
     });
     await setVideoTime(page, at);
     await expect.poll(async () => {
@@ -156,7 +167,9 @@ export async function effectOf(page, key, {after = 0} = {}) {
         return same;
     }, {intervals: [150]}).toBeGreaterThanOrEqual(3);
     await settled(page);
-    const {time, ...state} = await jellyfinState(page);
+    const {time, volume, ...state} = await jellyfinState(page);
     const moved = time - before.time;
-    return {key, ...state, moved: Math.abs(moved) < 6 ? 0 : Math.sign(moved)};
+    // In WebKit the same key from the same volume sometimes changes it and sometimes not, with the plugin off as well.
+    const heard = page.context().browser().browserType().name() === 'webkit' ? {} : {volume};
+    return {key, ...state, ...heard, moved: Math.abs(moved) < 6 ? 0 : Math.sign(moved)};
 }

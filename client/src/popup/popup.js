@@ -56,9 +56,14 @@ const DISPLAY_OPTIONS = {
 /** The text in jellyfin-web's TV layout, as a share of the screen's height, since it is read from across a room. */
 const TV_TEXT_SHARE = 0.024;
 const TV_MIN_FONT_SIZE = 20;
-/** The usual proportions, and the extension's defaults. */
+/** The usual size. The display's other sizes are in `SCALED_SIZES`, at this size, and go up with it. */
 const FONT_SIZE = 15;
-const LINE_HEIGHT = 21 / 15;
+const SCALED_SIZES = {
+    '--font-size-no-units': 15,
+    '--line-height-no-units': 21,
+    '--tag-font-size-no-units': 11,
+    '--tag-height-no-units': 20,
+};
 
 /** @returns {number} The popup's text size in pixels, on this screen. */
 function fontSize() {
@@ -146,8 +151,10 @@ export class Popup {
         const viewport = {width: innerWidth, height: innerHeight};
         const size = fontSize();
         host.style.visibility = 'hidden';
-        host.style.setProperty('--font-size-no-units', `${size}`);
-        host.style.setProperty('--line-height-no-units', `${Math.round(size * LINE_HEIGHT)}`);
+        for (const [name, value] of Object.entries(SCALED_SIZES)) {
+            host.style.setProperty(name, `${Math.round(value * size / FONT_SIZE)}`);
+        }
+
         host.style.width = `${popupWidth(viewport.width, size)}px`;
         host.style.left = '0';
         host.style.top = '0';

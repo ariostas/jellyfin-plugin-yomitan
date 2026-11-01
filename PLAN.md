@@ -228,7 +228,8 @@ The cursor stops at the ends of the words on screen, and does not wrap. See
 - Release workflow building per Jellyfin ABI. The current server is net10.0, and 10.11 is net9.0.
 - Scheduled CI against the latest Jellyfin image. The plugin depends on unofficial DOM: `video.htmlvideoplayer`,
   `.videoOsdBottom`, `.osdControls`, `.videoOsd-appBar`, `.videoSubtitlesInner`, `.libassjs-canvas`, `window.ApiClient`,
-  `window.Events` and its `SHOW_VIDEO_OSD` event. Failures here are the early warning.
+  `window.Events` and its `SHOW_VIDEO_OSD` event, `.page:not(.hide)`, `.dialogContainer .dialog.opened`, the `layout-tv`
+  class, and Escape on the document hiding the OSD. Failures here are the early warning.
 - README listing client support honestly, including the Android player setting.
 
 ## Not in scope for v1

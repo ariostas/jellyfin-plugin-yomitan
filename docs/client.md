@@ -324,7 +324,7 @@ a highlight of its own.
 
 **How it looks.** In word mode the mark is solid yellow with black text and a black ring, which stays visible on any
 picture, instead of the mouse's translucent blue. In jellyfin-web's TV layout the popup's text is 2.4% of the screen's height,
-which is 26 px at 1080p, at least 20 px, and it is as wide as that needs. Elsewhere it is 15 px and 460 px wide.
+which is 26 px at 1080p, at least 20 px, its tags grow with it, and it is as wide as that needs. Elsewhere it is 15 px and 460 px wide.
 
 Popup scrolling is 120 px a press.
 
