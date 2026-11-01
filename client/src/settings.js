@@ -291,9 +291,11 @@ export class Settings extends EventTarget {
                     this._forget(user.id, sent);
                 }
             } else if (response.ok) {
+                // Read first: a refresh answering during this await must still see these as waiting.
+                const saved = await response.json();
                 this._attempts = 0;
                 this._takeBack(sent);
-                this._accept(user.id, await response.json());
+                this._accept(user.id, saved);
                 this._setSyncState(Object.keys(this._pending).length > 0 ? 'saving' : 'saved');
             } else if (response.status >= 400 && response.status < 500 && !WORTH_REPEATING.has(response.status)) {
                 await this._refused(user, sent, response);
