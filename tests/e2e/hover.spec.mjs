@@ -25,6 +25,12 @@ test.afterAll(async () => {
     await deleteAll(admin);
 });
 
+/**
+ * Headless WPE delivered moves up to 297 ms apart when measured, and a gap longer than the delay is a mouse at rest, so a
+ * test of a mouse in motion only measures that there. The logic has nothing specific to an engine.
+ */
+const STEADY_MOUSE = 'Playwright cannot keep a mouse moving steadily in WebKit.';
+
 /** The default hover delay and grace period, which these tests lean on. settings.spec.mjs changes them. */
 const HOVER_DELAY = 200;
 const GRACE = 300;
@@ -208,8 +214,7 @@ test.describe('a mouse that is only passing', () => {
     // The last word on this line is about 290 px wide, so the slower two are on it for far longer than the delay.
     for (const speed of [1500, 600, 200]) {
         test(`crossing the line at ${speed} px/s does not pause`, async ({page, browserName}) => {
-            // Headless WPE delivers moves up to 300 ms apart, and a gap longer than the delay is a mouse at rest.
-            test.skip(browserName === 'webkit' && speed < 500, 'Playwright cannot move a mouse this slowly in WebKit.');
+            test.skip(browserName === 'webkit', STEADY_MOUSE);
             await start(page);
             await countPlayState(page);
             const first = await wordCentre(page, '昨日');
@@ -256,7 +261,8 @@ test.describe('a mouse that is only passing', () => {
         await expectPopup(page, '学校');
     });
 
-    test('going for the OSD through the line does not pause', async ({page}) => {
+    test('going for the OSD through the line does not pause', async ({page, browserName}) => {
+        test.skip(browserName === 'webkit', STEADY_MOUSE);
         await start(page);
         await countPlayState(page);
         const {x, y} = await wordCentre(page, '学校');
