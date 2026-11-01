@@ -5,8 +5,9 @@ in jellyfin-web. No fork of Jellyfin is needed.
 
 This is early work. During playback of a Japanese subtitle track, the plugin replaces the line with its own, split into
 words, using Yomitan's engine and dictionaries on the server. Hover a word, or tap it on a phone, and the video pauses and
-Yomitan's popup shows that word. Move away, or tap elsewhere, and it resumes. There is no settings page or dictionary
-upload UI yet. [PLAN.md](PLAN.md) has the roadmap, [docs/api.md](docs/api.md) is the HTTP contract, and
+Yomitan's popup shows that word. Move away, or tap elsewhere, and it resumes. While paused, a keyboard or a TV remote in
+jellyfin-web can walk the words too: Left, Right or Up starts, Left and Right move, Up and Down scroll the popup, Back leaves
+and Enter resumes. There is no settings page or dictionary upload UI yet. [PLAN.md](PLAN.md) has the roadmap, [docs/api.md](docs/api.md) is the HTTP contract, and
 [docs/client.md](docs/client.md) describes the client.
 
 ## Client support
@@ -19,6 +20,7 @@ can use it.
 | Desktop browsers | Supported. Tested in Chromium and Firefox, and in Playwright's WebKit on Linux, which is not Safari. |
 | Mobile browsers | Expected to work. Tested with Android Chrome emulation only, which is not a phone. See below. |
 | Jellyfin Android app | Expected to work with the web player selected. Not tested. See below. |
+| TV layout of jellyfin-web in a browser | Keys tested with Playwright at 1920x1080. No real TV or physical remote has been tried. |
 | Android TV, Samsung Tizen, native apps | Not possible with a plugin. |
 
 ## What to check on a real phone
@@ -46,6 +48,21 @@ Then, in Android Chrome and again in the Android app, with a Japanese subtitle t
 11. Pressing the phone's Back button with a popup open behaves sensibly, and leaving the player leaves nothing behind.
 12. Leave a popup open, lock the phone, come back: the video can still be resumed.
 13. On mobile data, a lookup is still quick enough to use.
+
+## What to check on a real TV
+
+The automated tests press real keys in jellyfin-web's TV layout, at 1920x1080, in desktop browsers. jellyfin-web treats a
+remote's buttons as the same key events, but no physical remote or real TV has been tried. Select **TV** under Settings,
+Display, Display mode if the device does not choose it by itself, and with a Japanese subtitle track and a dictionary
+installed, on a TV browser that runs the web UI from the server:
+
+1. Enter pauses and shows the OSD. Left, Right or Up then hides it and marks the first word of the line, with its popup.
+2. The mark is easy to find and the popup easy to read from where you sit.
+3. Left and Right move between words, and stop at the ends. Holding one down keeps going.
+4. Up and Down scroll a long entry, and do nothing at its ends.
+5. The remote's Back button leaves the words, stays paused and stays in the player, even when held for a moment. A second
+   press does what Back always does there.
+6. Enter on a word resumes, and nothing else happens.
 
 ## Development
 

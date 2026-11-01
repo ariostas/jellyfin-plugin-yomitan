@@ -207,11 +207,17 @@ jellyfin-web layout. No real TV pass.
 
 **Exit:** Playwright covers the full flow in desktop and TV layouts.
 
+**Phase 5 result:** done, with real keys in the TV layout at 1920x1080, and no physical remote. Beyond the flow above, a key
+held down stays claimed until released, since the repeats of a Back would otherwise leave the player. A popup opened by the
+pointer is where the cursor starts, and word mode makes its pause the user's. The popup's text scales up in the TV layout.
+The cursor stops at the ends of the words on screen, and does not wrap. See
+[docs/client.md](docs/client.md#the-keyboard-and-a-remote).
+
 ### Phase 6: Settings
 
 - Admin dashboard page: upload, progress, list, delete, ordering.
 - Per-user settings stored on the server, so they follow the user between desktop and phone: enable toggle,
-  enabled dictionaries, font size, remote entry key.
+  enabled dictionaries, font size, remote entry key (`upOnlyEntry`, already stored and honoured).
 - Add an in-player toggle.
 
 **Exit:** a non-admin user can change settings on one device and have them apply on another.

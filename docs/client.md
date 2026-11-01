@@ -1,7 +1,6 @@
 # Client
 
-How the code that runs in jellyfin-web fits together, and what Phases 4 and 5 build on. The server's side of the
-conversation is in [api.md](api.md).
+How the code that runs in jellyfin-web fits together. The server's side of the conversation is in [api.md](api.md).
 
 ## Two scripts
 
@@ -30,7 +29,7 @@ playback/
   session.js            one track of one playback: loads it, drives the overlay, handles failure
   native-subtitles.js   hides Jellyfin's rendering, and restores it
   hold.js               pauses for a lookup, and resumes only what it paused
-  osd.js                what jellyfin-web's OSD covers now
+  osd.js                what jellyfin-web's OSD covers now, and hiding it
 subtitles/
   source.js             fetches a track, and says whether it holds text at all
   ass.js                parses ASS and SSA scripts
@@ -42,8 +41,9 @@ layer.js                the element everything of ours goes in
 overlay.js              draws the current cues, and says which word an event hit
 input/
   pointer.js            mouse and touch
+  keys.js               the keyboard and a remote: word mode
 popup/
-  lookup.js             a word's popup, highlight and pause, as one thing. Phase 5 starts here
+  lookup.js             a word's popup, highlight and pause, as one thing
   popup.js              the shadow root, and fitting it on screen
   placement.js          where it goes. Plain arithmetic
   renderer.js           Yomitan's DisplayGenerator
@@ -78,6 +78,7 @@ settings.addEventListener('change', ({detail: {name, value}}) => {});
 | `enabled` | `true` | Off means the engine does not load, and playback is what jellyfin-web does alone. Takes effect at once |
 | `hoverDelayMs` | 200 | How long the mouse has to rest on a word before anything happens |
 | `hoverGraceMs` | 300 | How long the popup survives the mouse leaving it and the word |
+| `upOnlyEntry` | `false` | Only Up enters [word mode](#the-keyboard-and-a-remote), which leaves Left and Right to the OSD's buttons while paused. No UI until Phase 6 |
 
 **`enabled` is on by default, against [PLAN.md](../PLAN.md)'s decision 4.** There is no UI to turn it on until Phase 6,
 which has to change the default when it adds one. It is harmless meanwhile: nothing happens without a Japanese subtitle
@@ -200,7 +201,7 @@ playback ends.
 ## Using a word
 
 `WordLookup` in `popup/lookup.js` is a word's popup, its highlight and the pause, as one thing with one way in and one way
-out. `input/pointer.js` only decides which word and when. Phase 5's keys should do the same.
+out. `input/pointer.js` and `input/keys.js` only decide which word and when.
 
 ### The mouse
 
@@ -243,6 +244,90 @@ popup is stopped at `window` in the capture phase, and for 700 ms after, its `to
 mouse events and `click` are stopped too. A closing tap on an OSD control only closes: otherwise a tap on the play button
 would pause what the plugin has just resumed.
 
+### The keyboard and a remote
+
+jellyfin-web turns a remote into the same `keydown` events as a keyboard, so this is one path. It serves desktop keyboards
+and any browser-based TV layout of jellyfin-web. Nothing here has met a physical remote or a real TV: the tests press real
+keys in the TV layout at 1920x1080, in desktop browsers. The Android TV app has no WebView and cannot be reached.
+
+**Word mode** is a cursor that walks the words on screen while the video is paused.
+
+| Key | Outside word mode | In word mode |
+| --- | --- | --- |
+| Enter | jellyfin-web's: pauses in the TV layout, and shows the OSD | Resumes. It presses nothing else, whatever has focus |
+| Left, Right | Paused: enters word mode. Playing: jellyfin-web's | Next or previous word with an entry |
+| Up | Paused: enters word mode. Playing: jellyfin-web's | Scrolls the popup. At the end, nothing |
+| Down | jellyfin-web's | Scrolls the popup. At the end, nothing |
+| Back | jellyfin-web's | Leaves word mode and stays paused |
+| Anything else | jellyfin-web's | jellyfin-web's. A seek or a play ends word mode by itself |
+
+Back is Escape, Backspace, BrowserBack, GoBack, 461 on webOS, 10009 on Tizen and the Xbox and gamepad codes.
+jellyfin-web only treats some of those as Back, and the browser acts on BrowserBack, so word mode claims them all. In a
+desktop browser's fullscreen, the browser also takes Escape to leave fullscreen, and a page cannot stop that. Backspace
+does not. That is from how browsers document it: headless Playwright has no such fullscreen.
+
+**Keys are claimed only while the video is paused** in an `active` session, in a `capture` listener on `window`, with
+`stopImmediatePropagation`, and only for keys it uses. These are always jellyfin-web's, and
+`tests/e2e/keys.spec.mjs` compares each with what it does with the plugin off:
+
+- Normal playback, or `enabled` off, or a session that is not `active`.
+- Any of Shift, Ctrl, Alt or Meta held.
+- Focus in something that takes keys: the same test as jellyfin-web's, so a text field, the subtitle offset's editable
+  text, and also a slider. Scrubbing a paused video with the position slider in focus goes on working.
+- One of jellyfin-web's dialogs or menus is open, by its own test, `.dialogContainer .dialog.opened`.
+- Entering, when nothing on screen has an entry: no line, or a line with no known word. A key that would do nothing here
+  stays useful there.
+- With `upOnlyEntry`, Left and Right, until Up has entered.
+
+Up Next counts as part of the OSD, not as a dialog, so it does not stop word mode from starting. That is untested, as it
+needs a real episode's length.
+
+**Entering** hides the OSD, moves the line down to where it sits without it, and shows the first word of the dialogue. If a
+popup is already open from the pointer, that word is where the cursor starts, and the key only enters: the next press moves.
+A hover's pause becomes the user's at this point, because Back has to stay paused.
+
+**The OSD** can only be hidden through a synthetic Escape, which with the OSD already hidden means going back, and leaves
+the player in the TV layout. `hideOsd()` sends it only if `.videoOsdBottom` is showing, and does not let it bubble past the
+document, since going back is decided on `window`. jellyfin-web keeps a finished video's page in the DOM, hidden, and with
+its OSD looking shown, so everything here asks about the `.page` that is not hidden.
+
+**Decided:**
+
+- The words of every cue on screen are one row, in the order they are drawn: signs at the top, then dialogue, each in the
+  overlay's order, and across a cue's line breaks. Word mode starts on the dialogue's first word, because that is what
+  someone stopped for, and Left from there reaches the signs above it. A sign is only the first stop if no dialogue has a
+  known word.
+- At either end the cursor stays, and the key is still claimed. It does not wrap: on a remote, wrapping loses your place.
+- A word that is not `known` is never a stop. One that is `known` and finds nothing anyway is skipped, in the direction of
+  travel, and at the end of the row the cursor turns back. Only the last word left ends word mode.
+- A lookup that fails leaves word mode, paused. Going on to the next word would make someone wait out the retries of each.
+- A line not yet split claims the key, because jellyfin-web would otherwise seek away from it. The cursor lands when the words
+  of every cue on screen are in. If that ends with nothing to land on, word mode ends. Left and Right do nothing until it has
+  landed, while Back and Enter work. If splitting fails, the session goes `inactive` as it always does.
+- The cursor moves at once, before the lookup, and a newer key cancels an older lookup. So keys never wait for the network,
+  and the old popup stays until the new one is ready.
+- A key held down stays claimed until it is released. Without that, the repeats of a Back would find word mode over, and
+  reach jellyfin-web, which leaves the player. An entry key's repeats never enter, so a held key that was rewinding does not
+  fall into word mode when the video stops.
+- Word mode always starts again at the first word.
+
+**It ends** on `play` from anywhere, a seek, an `emptied`, the line going, a new track, leaving the player, `inactive`, or
+`enabled` going off. All of those reach it through `lookup`'s `close` event, or for a cursor still waiting for its line,
+through the video's events. Teardown ends the listeners with the session's `signal`.
+
+**The mouse or a finger.** `PointerInput.standAside()` cancels its hover and grace timers and ignores the mouse, so a popup
+someone was moving away from does not close under the keys. The mouse counts again after it moves more than 8 px, since a
+hand on a desk is not a decision, or on any `pointerdown`. Then word mode ends and the popup is the pointer's, as if it had
+opened it: the mouse resting on another word swaps it, leaving closes it, a tap elsewhere closes it, and a click on a word
+opens that one. The video stays paused. All of this goes through the one `WordLookup`, so there is never a second popup or
+a highlight of its own.
+
+**How it looks.** In word mode the mark is solid yellow with black text and a black ring, which stays visible on any
+picture, instead of the mouse's translucent blue. In jellyfin-web's TV layout the popup's text is 2.4% of the screen's height,
+which is 26 px at 1080p, at least 20 px, and it is as wide as that needs. Elsewhere it is 15 px and 460 px wide.
+
+Popup scrolling is 120 px a press.
+
 ### Pausing
 
 `PlaybackHold` pauses with `video.pause()` and resumes with `video.play()`, which go through jellyfin-web's own listeners,
@@ -252,6 +337,7 @@ so the server stays in step. It only resumes what it paused.
 - A `play` event it did not cause means someone pressed play. The popup closes, and the hold is forgotten.
 - A seek closes the popup, and resumes if the plugin paused. So does anything else that takes the line off the screen.
 - Ending with the track or the session also resumes. Only a stopped playback does not: there is no video left.
+- Word mode taking over a popup makes the pause the user's, so it stays paused.
 
 **A word looked up pauses first, and shows after.** `known` says a dictionary has it, so a miss is not a real risk, and a
 line can end during the request. A word that is not `known` takes no pointer events at all, so hovering it never pauses:
@@ -305,7 +391,7 @@ A popup loads 32 images at most.
 if it can be. It goes by the whole block of lines and not just the word, so the sentence stays readable, and it never
 covers the word. Long entries scroll inside it. It moves on `resize`, which covers turning a phone.
 
-## For Phase 5
+## For later phases
 
 `window.__yomitanJellyfin.playback` is the `PlaybackController`, present from the first video on. It is an `EventTarget`:
 
@@ -349,7 +435,8 @@ lookup.addEventListener('close', ({detail: {reason, word}}) => {});
 
 `index` is the position in `session.words.get(cue.id)`. `open` on another word swaps, and `open` on a word that is not
 `known` returns `false` and does nothing. In PLAN.md's flow the video is paused before the cursor appears, so that pause
-is not the plugin's, and `close()` leaves it paused, which is what Back wants there. `reason` is one of:
+is not the plugin's, and `close()` leaves it paused, which is what Back wants there. `keepPaused()` makes a pause of the
+lookup's the user's, and `place()` puts the popup back next to a word that moved. `reason` is one of:
 
 | `reason` | Meaning |
 | --- | --- |
@@ -360,7 +447,7 @@ is not the plugin's, and `close()` leaves it paused, which is what Back wants th
 | `miss`, `error`, `gone` | Nothing was found, the lookup failed, or the line went, as a seek under way or a new subtitle offset can do |
 | `ended`, `stopped` | The session ended, with the video going on, or with it gone |
 
-Moving the cursor over a word marks it through `lookup`, and `Overlay.setActiveWord` is the highlight on its own.
+The cursor marks a word through `lookup`, and `Overlay.setActiveWord` is the highlight on its own.
 
 ### The cue
 
@@ -380,15 +467,14 @@ Moving the cursor over a word marks it through `lookup`, and `Overlay.setActiveW
 | `known` | Whether a dictionary has it. Punctuation and unknown text are words too, with `known: false` |
 | `term`, `reading` | Dictionary form, for a known word |
 
-Words cover the cue's text except for white space, in order. Pick targets with `known`, and step through them for the
-Phase 5 cursor.
+Words cover the cue's text except for white space, in order. Pick targets with `known`.
 
 ### The overlay
 
 ```text
 body
   .yomitan-layer
-    .yomitan-overlay[lang=ja]
+    .yomitan-overlay[lang=ja]                      .yomitan-word-mode in word mode
       .yomitan-signs
         .yomitan-line[data-cue-id][data-kind=sign]
       .yomitan-lines
@@ -424,4 +510,5 @@ perhaps incomplete.
 - Native cues use `track.mode = 'hidden'`, not `disabled`, so they stay loaded and in step.
 - `session.time` already includes the offset. Do not add it again.
 - A failure can end the overlay at any moment, in `_fail`. Listen for `inactive`.
-- jellyfin-web's `keydown` listeners are on `document`, so capture on `window` to get there first.
+- jellyfin-web's `keydown` listeners are on `document` and on `window`, none of them capturing the keys used here, so a
+  capture listener on `window` gets there first.
