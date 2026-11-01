@@ -193,15 +193,14 @@ class DictionaryList {
 
     update = () => {
         const ordered = orderDictionaries(this._dictionaries, this._settings.get('dictionaryOrder'));
-        const focused = document.activeElement?.dataset?.yomitanFocusKey;
+        const focused = this._list.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
         this._note.textContent = ordered.length === 0 ?
             'No dictionaries are installed yet, so words cannot be looked up. An administrator can add them in the dashboard, under Yomitan.' :
             'Dictionaries higher in the list show first. New ones an administrator adds are on, at the bottom.';
         this._list.replaceChildren(...ordered.map((dictionary, index) => this._row(dictionary, index, ordered)));
-        // Moving a row rebuilds the list, and a remote must stay on the button it just pressed.
-        if (focused) {
-            this._list.querySelector(`[data-yomitan-focus-key="${focused}"]`)?.focus();
-        }
+        // Moving a row rebuilds the list, and a remote must stay with that row, even if its button just went off.
+        const same = [...this._list.querySelectorAll('[aria-label]')].find((node) => node.getAttribute('aria-label') === focused);
+        (same?.disabled ? same.closest('li').querySelector('input') : same)?.focus();
     };
 
     _row({title, sizeBytes, summary}, index, ordered) {
@@ -212,18 +211,13 @@ class DictionaryList {
             'aria-label': `Use ${title}`,
             on: {change: () => this._setEnabled(title, input.checked, ordered)},
         });
-        input.dataset.yomitanFocusKey = `check${index}`;
-        const move = (offset, symbol, label) => {
-            const button = element('button', {
-                type: 'button',
-                textContent: symbol,
-                disabled: !ordered[index + offset],
-                'aria-label': `Move ${title} ${label}`,
-                on: {click: () => this._move(ordered, index, offset)},
-            });
-            button.dataset.yomitanFocusKey = `${label}${index + offset}`;
-            return button;
-        };
+        const move = (offset, symbol, label) => element('button', {
+            type: 'button',
+            textContent: symbol,
+            disabled: !ordered[index + offset],
+            'aria-label': `Move ${title} ${label}`,
+            on: {click: () => this._move(ordered, index, offset)},
+        });
 
         const counts = summary?.counts ?? {};
         const facts = [

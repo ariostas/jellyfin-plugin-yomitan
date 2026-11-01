@@ -163,7 +163,8 @@ test.describe('it fails safely', () => {
         await play(page, movies.LookupSample, {subtitleStreamIndex: 0, minimumTime: 1});
         await page.waitForTimeout(1000);
         await expect(page.locator(BUTTON)).toHaveCount(0);
-        await page.locator('.btnPause').evaluate((button) => button.click());
+        // jellyfin-web ignores a click from a script in Firefox, so a key does it where there are keys.
+        await (isMobile ? page.locator('.btnPause').evaluate((button) => button.click()) : page.keyboard.press('k'));
         await expect.poll(() => isPaused(page)).toBe(true);
     });
 
@@ -182,6 +183,8 @@ test.describe('it fails safely', () => {
 });
 
 test.describe('with a keyboard or a remote', () => {
+    // The size keys.spec.mjs uses for the TV layout. At a smaller one, Sign In does nothing there in Firefox or WebKit.
+    test.use({viewport: {width: 1920, height: 1080}});
     test.skip(({isMobile}) => isMobile, 'A phone has no keys.');
     test.beforeEach(async ({page}) => {
         await useTvLayout(page);

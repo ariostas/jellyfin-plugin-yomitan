@@ -140,6 +140,7 @@ export class Settings extends EventTarget {
             throw new TypeError(`Bad value for setting ${name}`);
         }
 
+        this.follow();
         if (isSame(this._values[name], value)) {
             return;
         }

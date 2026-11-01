@@ -171,6 +171,21 @@ test.describe('the list of dictionaries', () => {
         await expect(page.getByRole('button', {name: 'Move Two down'})).toBeDisabled();
     });
 
+    test('moving a row keeps the focus on it, for a keyboard or a remote', async ({page, isMobile}) => {
+        test.skip(isMobile, 'A phone has no keys.');
+        await logIn(page, {user, settings: {enabled: true}});
+        await page.goto('web/#/mypreferencesmenu');
+        await page.locator('.yomitan-settings-link').click();
+        const up = page.getByRole('button', {name: 'Move Three up'});
+        await up.focus();
+        await page.keyboard.press('Enter');
+        await expect.poll(() => titles(page)).toEqual(['One', 'Three', 'Two']);
+        await expect(up).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect.poll(() => titles(page)).toEqual(['Three', 'One', 'Two']);
+        await expect(page.getByRole('checkbox', {name: 'Use Three'})).toBeFocused();
+    });
+
     test('one added later is on and last, and one deleted is gone without a word', async ({page, isMobile}) => {
         await logIn(page, {user, settings: {enabled: true, dictionaryOrder: ['Three', 'One', 'Two', 'Deleted long ago'], disabledDictionaries: ['Two', 'Deleted long ago']}});
         await importArchive(admin, smallDictionary('Four'));
@@ -258,6 +273,8 @@ test('a page in its old layout: no link and no error when the place for it is go
 
 test('a remote can walk it', async ({page, isMobile}) => {
     test.skip(isMobile, 'A phone has no keys.');
+    // The size keys.spec.mjs uses for the TV layout. At a smaller one, Sign In does nothing there in Firefox or WebKit.
+    await page.setViewportSize({width: 1920, height: 1080});
     await useTvLayout(page);
     await logIn(page, {user});
     await page.goto('web/#/mypreferencesmenu');
