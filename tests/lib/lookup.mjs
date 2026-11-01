@@ -134,8 +134,8 @@ export function activeWord(page) {
 /** Whether jellyfin-web's OSD is showing. */
 export function osdShowing(page) {
     return page.evaluate(() => {
-        const bar = document.querySelector('.videoOsdBottom');
-        return !bar.classList.contains('hide') && !bar.classList.contains('videoOsdBottom-hidden');
+        const bar = document.querySelector('.page:not(.hide) .videoOsdBottom');
+        return bar !== null && !bar.classList.contains('hide') && !bar.classList.contains('videoOsdBottom-hidden');
     });
 }
 

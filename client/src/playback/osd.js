@@ -4,10 +4,19 @@
 /** Clear space between the controls and a line, in pixels. */
 const GAP = 8;
 
+/** jellyfin-web keeps the page of a finished video, hidden, with its OSD as it left it, so a second video has two. */
+const CURRENT_PAGE = '.page:not(.hide)';
+
+/** @returns {HTMLElement|null} The OSD's bar, if it is showing. */
+function shownBar() {
+    const bar = document.querySelector(`${CURRENT_PAGE} .videoOsdBottom`);
+    return bar && !bar.classList.contains('hide') && !bar.classList.contains('videoOsdBottom-hidden') ? bar : null;
+}
+
 /** @returns {{top: number, bottom: number}} How many pixels the OSD's controls take at each end of the screen. */
 export function measureOsd() {
-    const bar = document.querySelector('.videoOsdBottom');
-    if (!bar || bar.classList.contains('hide') || bar.classList.contains('videoOsdBottom-hidden')) {
+    const bar = shownBar();
+    if (!bar) {
         return {top: 0, bottom: 0};
     }
 
