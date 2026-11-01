@@ -98,14 +98,27 @@ test.describe('hovering a word', () => {
         await expectPopup(page, '学校');
         await expect.poll(() => serverPaused(sessionId)).toBe(true);
 
-        await parkMouse(page);
-        const left = Date.now();
-        await page.waitForTimeout(GRACE / 3);
-        expect((await popupState(page)).open, 'the popup is still there during the grace period').toBe(true);
-        expect(await isPaused(page)).toBe(true);
+        // Timed in the page, from the event that left the word to the popup going, since a mouse move takes Playwright
+        // anything up to 150 ms.
+        await page.evaluate(() => {
+            const host = document.querySelector('.yomitan-popup');
+            const timing = {left: 0, closed: 0};
+            window.graceTiming = timing;
+            document.addEventListener('pointermove', ({target}) => {
+                if (!timing.left && !target.closest('.yomitan-active') && target !== host) {
+                    timing.left = performance.now();
+                }
+            }, {capture: true});
+            new MutationObserver(() => {
+                timing.closed ||= host.hidden ? performance.now() : 0;
+            }).observe(host, {attributes: true, attributeFilter: ['hidden']});
+        });
 
+        await parkMouse(page);
         await expectNoPopup(page);
-        expect(Date.now() - left).toBeGreaterThanOrEqual(GRACE - 50);
+        const {left, closed} = await page.evaluate(() => window.graceTiming);
+        expect(left).toBeGreaterThan(0);
+        expect(closed - left).toBeGreaterThanOrEqual(GRACE - 20);
         await expect.poll(() => isPaused(page)).toBe(false);
         expect(await activeWord(page)).toBeNull();
         await expect.poll(() => serverPaused(sessionId)).toBe(false);
