@@ -56,6 +56,12 @@ export class PlaybackSession {
 
         /** `idle`, `active` or `inactive`. Inactive means Jellyfin's subtitles are showing. */
         this.state = 'idle';
+        /**
+         * Why it is inactive, when that is a problem someone can act on: `none`, `disabled` or `no-terms` from
+         * NoDictionariesError, or `failed`. Null for a track the plugin leaves alone on purpose.
+         * @type {string|null}
+         */
+        this.problem = null;
         /** @type {WordLookup|null} What shows a word's popup. Null unless the state is `active`. */
         this.lookup = null;
         /** @type {readonly import('../subtitles/timeline.js').Cue[]} */
@@ -128,6 +134,8 @@ export class PlaybackSession {
         this._timeline = new CueTimeline(cues);
         this._layer = new Layer(signal);
         this._overlay = new Overlay(this._layer.element);
+        this._overlay.setFontScale(this._settings.get('fontScale'));
+        this._settings.addEventListener('change', this._onSettingChanged, {signal});
         this.lookup = new WordLookup({
             engine,
             overlay: this._overlay,
@@ -286,13 +294,22 @@ export class PlaybackSession {
         }
     }
 
+    _onSettingChanged = ({detail: {name, value}}) => {
+        if (name === 'fontScale') {
+            this._overlay.setFontScale(value);
+        }
+    };
+
     _onDictionariesChanged = () => {
         this._segmenter.clear();
-        if (this._engine.dictionaries.length === 0) {
-            this._fail(new NoDictionariesError());
+        const {unusable} = this._engine;
+        if (unusable) {
+            this._fail(new NoDictionariesError(unusable));
             return;
         }
 
+        // What it shows came from the old set, and the word under it may not exist in the new one.
+        this.lookup.close('gone');
         this._shownKey = null;
         this._render();
     };
@@ -304,11 +321,12 @@ export class PlaybackSession {
         }
 
         if (error instanceof NoDictionariesError) {
-            console.info('[yomitan] no dictionaries are installed, so subtitles stay as they are');
+            console.info(`[yomitan] subtitles stay as they are: ${error.message}`);
         } else {
             console.warn('[yomitan] subtitles stay as they are:', error);
         }
 
+        this.problem = error.reason ?? 'failed';
         this._tearDown({playing: true});
         this._setInactive();
     }

@@ -16,6 +16,16 @@ export function trackContent(stream) {
     return stream.IsTextSubtitleStream === false ? 'image' : 'text';
 }
 
+/**
+ * @param {string} itemId
+ * @param {string} mediaSourceId
+ * @param {{Index: number}} stream
+ * @returns {string} Where the server keeps this track.
+ */
+export function trackPath(itemId, mediaSourceId, stream) {
+    return `Videos/${itemId}/${mediaSourceId}/Subtitles/${stream.Index}`;
+}
+
 async function fetchTrack(apiClient, url, signal) {
     const response = await fetch(apiClient.getUrl(url), {
         headers: {Authorization: `MediaBrowser Token="${apiClient.accessToken()}"`},
@@ -33,7 +43,13 @@ async function fetchAssEvents(apiClient, base, codec, signal) {
     return parseAss(await response.text());
 }
 
-async function fetchTimedText(apiClient, base, signal) {
+/**
+ * @param {object} apiClient
+ * @param {string} base `Videos/{item}/{mediaSource}/Subtitles/{index}`.
+ * @param {AbortSignal} signal
+ * @returns {Promise<{text: string, start: number, end: number}[]>} The track's events, flattened by the server.
+ */
+export async function fetchTimedText(apiClient, base, signal) {
     const response = await fetchTrack(apiClient, `${base}/Stream.js`, signal);
     const {TrackEvents: events} = await response.json();
     return events.map(({Text: text, StartPositionTicks: start, EndPositionTicks: end}) => (
@@ -54,7 +70,7 @@ async function fetchTimedText(apiClient, base, signal) {
  * @throws When the server has no text for the track.
  */
 export async function loadCues({apiClient, itemId, mediaSourceId, stream, signal}) {
-    const base = `Videos/${itemId}/${mediaSourceId}/Subtitles/${stream.Index}`;
+    const base = trackPath(itemId, mediaSourceId, stream);
     const codec = (stream.Codec ?? '').toLowerCase();
     if (ASS_CODECS.has(codec)) {
         try {

@@ -1,6 +1,6 @@
 // The setting store, and the exit condition of Phase 4: with `enabled` off, playback is what it is without the plugin.
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
-import {credentials, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
+import {createUser, credentials, defaultSettings, deleteUser, getMovies, logIn, play, readSettings, server} from '../lib/jellyfin.mjs';
 import {expectPopup, isPaused, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
 import {countListeners, engineTimers, jellyfinLine, trackEngineTimers} from '../lib/player.mjs';
@@ -8,7 +8,6 @@ import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
 
-const STORAGE_KEY = 'yomitan.settings';
 let admin;
 let movies;
 
@@ -22,10 +21,6 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
     await deleteAll(admin);
 });
-
-const store = (page, value) => page.addInitScript(([key, text]) => {
-    localStorage.setItem(key, text);
-}, [STORAGE_KEY, typeof value === 'string' ? value : JSON.stringify(value)]);
 
 /**
  * Records every listener the plugin's own code adds to the page, in every browser, by what called addEventListener. The
@@ -49,35 +44,25 @@ const ownElements = (page) => page.evaluate(() => ({
     attribute: document.documentElement.hasAttribute('data-yomitan-hides-subtitles'),
 }));
 
-test('the defaults, read through the one store the page has', async ({page}) => {
-    await logIn(page);
+test('a new user has the defaults, through the one store the page has', async ({page}) => {
+    const user = await createUser('new');
+    await logIn(page, {user, settings: null});
+    await expect.poll(() => page.evaluate(() => window.__yomitanJellyfin.settings.userId)).toBe(user.id);
     const values = await page.evaluate(() => {
         const {settings} = window.__yomitanJellyfin;
-        return {enabled: settings.get('enabled'), delay: settings.get('hoverDelayMs'), grace: settings.get('hoverGraceMs')};
+        return Object.fromEntries(['enabled', 'hoverDelayMs', 'hoverGraceMs', 'upOnlyEntry', 'fontScale', 'dictionaryOrder', 'disabledDictionaries'].map((name) => [name, settings.get(name)]));
     });
-    expect(values).toEqual({enabled: true, delay: 200, grace: 300});
-});
-
-test('a broken or wrongly typed store falls back to the defaults', async ({page}) => {
-    await store(page, {enabled: 'yes', hoverDelayMs: null, hoverGraceMs: 900});
-    await logIn(page);
-    expect(await page.evaluate(() => {
-        const {settings} = window.__yomitanJellyfin;
-        return [settings.get('enabled'), settings.get('hoverDelayMs'), settings.get('hoverGraceMs')];
-    })).toEqual([true, 200, 900]);
-});
-
-test('unreadable JSON does not stop the page', async ({page}) => {
-    await store(page, '{not json');
-    await logIn(page);
-    expect(await page.evaluate(() => window.__yomitanJellyfin.settings.get('enabled'))).toBe(true);
+    expect(values).toEqual(await readSettings(user));
+    expect(values).toEqual(defaultSettings);
+    await deleteUser(user);
 });
 
 test('a value survives a reload, and the store refuses the wrong type', async ({page}) => {
     await logIn(page);
     await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverDelayMs', 75));
+    await expect.poll(async () => (await readSettings(credentials)).hoverDelayMs).toBe(75);
     await page.reload();
-    await page.waitForFunction(() => window.__yomitanJellyfin);
+    await page.waitForFunction(() => window.__yomitanJellyfin?.settings.get('hoverDelayMs') === 75);
     expect(await page.evaluate(() => {
         const {settings} = window.__yomitanJellyfin;
         let refused = false;
@@ -109,19 +94,19 @@ test.describe('with enabled off', () => {
     test('nothing of the plugin is on the page, the video or the network', async ({page}) => {
         const requests = [];
         page.on('request', (request) => {
-            if (request.url().includes('/Yomitan/') && !request.url().includes('/Yomitan/client.js')) {
+            if (/\/Yomitan\/(?!client\.js|Settings)/.test(request.url())) {
                 requests.push(request.url());
             }
         });
-        await store(page, {enabled: false});
         await trackOurListeners(page);
-        await logIn(page);
+        await logIn(page, {settings: {enabled: false}});
         await play(page, movies.TracksSample, {subtitleStreamIndex: 2, minimumTime: 3});
         await page.waitForTimeout(1500);
 
         expect(requests).toEqual([]);
         expect(await ownElements(page)).toEqual({elements: 0, attribute: false});
-        expect(await page.evaluate(() => window.ourListeners)).toEqual([]);
+        // What the loader itself needs, and the toggle's button, and nothing on the video or the document.
+        expect((await page.evaluate(() => window.ourListeners)).sort()).toEqual(['HTMLButtonElement click', 'Window viewshow', 'Window visibilitychange']);
         expect(await page.evaluate(() => window.__yomitanJellyfin.playback)).toBeUndefined();
         expect(await jellyfinLine(page)).toBe('showing');
         expect(await isPaused(page)).toBe(false);
@@ -130,7 +115,7 @@ test.describe('with enabled off', () => {
     test('the video has exactly the listeners it has with the plugin blocked', async ({page, browser, browserName}) => {
         test.skip(browserName !== 'chromium', 'Counting listeners takes Chromium\'s debugger.');
         const listeners = async (target) => {
-            await logIn(target);
+            await logIn(target, {settings: {enabled: false}});
             await play(target, movies.TracksSample, {subtitleStreamIndex: 2, minimumTime: 2});
             await target.waitForTimeout(1000);
             return {
@@ -145,7 +130,6 @@ test.describe('with enabled off', () => {
 
         const context = await browser.newContext({baseURL: `${server.url}/`});
         const disabled = await context.newPage();
-        await store(disabled, {enabled: false});
         const off = await listeners(disabled);
         await context.close();
         console.log('listeners with the plugin blocked and with it disabled:', without, off);
@@ -153,8 +137,7 @@ test.describe('with enabled off', () => {
     });
 
     test('a Japanese track with an installed dictionary stays Jellyfin\'s, through a whole line', async ({page}) => {
-        await store(page, {enabled: false});
-        await logIn(page);
+        await logIn(page, {settings: {enabled: false}});
         const {LookupSample: item} = await getMovies();
         await play(page, item, {subtitleStreamIndex: 0, minimumTime: 1});
         await expect.poll(() => page.evaluate(() => {
@@ -205,8 +188,7 @@ test.describe('turning it off and on while playing', () => {
     });
 
     test('a session that starts disabled starts when turned on', async ({page}) => {
-        await store(page, {enabled: false});
-        await logIn(page);
+        await logIn(page, {settings: {enabled: false}});
         await play(page, movies.TracksSample, {subtitleStreamIndex: 2, minimumTime: 1});
         expect(await page.evaluate(() => window.__yomitanJellyfin.playback)).toBeUndefined();
         await page.evaluate(() => window.__yomitanJellyfin.settings.set('enabled', true));

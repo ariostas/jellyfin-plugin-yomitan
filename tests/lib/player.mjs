@@ -109,7 +109,7 @@ export function jellyfinLine(page) {
 
 export function setVideoTime(page, time) {
     return page.evaluate((target) => {
-        const manager = window.__yomitanJellyfin.playback.playbackManager;
+        const manager = window.__yomitanJellyfin.playbackManager;
         manager.seek(Math.round(target * 1e7), manager.getCurrentPlayer());
     }, time);
 }
@@ -117,7 +117,7 @@ export function setVideoTime(page, time) {
 /** Selects a subtitle track, as the player's menu does. -1 turns subtitles off. */
 export function setSubtitleTrack(page, index) {
     return page.evaluate((target) => {
-        const manager = window.__yomitanJellyfin.playback.playbackManager;
+        const manager = window.__yomitanJellyfin.playbackManager;
         manager.setSubtitleStreamIndex(target, manager.getCurrentPlayer());
     }, index);
 }
@@ -139,7 +139,7 @@ export function setSubtitleOffset(page, offset) {
 
 export function stopPlayback(page) {
     return page.evaluate(() => {
-        const manager = window.__yomitanJellyfin.playback.playbackManager;
+        const manager = window.__yomitanJellyfin.playbackManager;
         return manager.stop(manager.getCurrentPlayer());
     });
 }

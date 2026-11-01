@@ -39,6 +39,14 @@ public class ClientController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetEngine([FromQuery] string? v) => ServeScript(_bundle.Engine, v);
 
+    /// <summary>Gets a user's settings page. Anonymous like the others, for the same reasons.</summary>
+    /// <param name="v">Version built into the loader. A match means the URL can be cached for good.</param>
+    /// <returns>The script.</returns>
+    [HttpGet("settings-page.js")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult GetSettingsPage([FromQuery] string? v) => ServeScript(_bundle.SettingsPage, v);
+
     private FileContentResult ServeScript(ClientScript script, string? requestedVersion)
     {
         Response.Headers.CacheControl = string.Equals(requestedVersion, script.Version, StringComparison.Ordinal)

@@ -46,7 +46,7 @@ export const IGNORED_PAGE_ERRORS = [
 ];
 
 function isOurs(text) {
-    return /\/Yomitan\/(engine|client)\.js/.test(text);
+    return /\/Yomitan\/(engine|client|settings-page)\.js|name=yomitan-admin\.js/i.test(text);
 }
 
 function describeError(error) {

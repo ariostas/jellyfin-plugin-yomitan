@@ -1,0 +1,32 @@
+<div id="yomitanAdminPage" data-role="page" class="page type-interior pluginConfigurationPage yomitan-admin" data-controller="__plugin/yomitan-admin.js">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2 class="sectionTitle">Yomitan</h2>
+            <p class="fieldDescription">
+                Dictionaries for looking up words in Japanese subtitles. They are shared by everyone on this server, and each
+                user chooses which to use, in what order, from Settings, Yomitan. A dictionary is a zip file in Yomitan's format.
+            </p>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">Add a dictionary</h3>
+                <div class="yomitan-upload">
+                    <input type="file" id="yomitanFile" accept=".zip,application/zip" aria-label="Dictionary file" />
+                    <button type="button" id="yomitanUpload" is="emby-button" class="raised button-submit emby-button" disabled><span>Upload</span></button>
+                </div>
+                <div id="yomitanProgress" class="yomitan-progress" hidden>
+                    <label for="yomitanTransfer">Sending the file: <span id="yomitanTransferText"></span></label>
+                    <progress id="yomitanTransfer" max="1" value="0"></progress>
+                    <label for="yomitanImport">Importing: <span id="yomitanImportText"></span></label>
+                    <progress id="yomitanImport" max="1" value="0"></progress>
+                </div>
+                <div id="yomitanMessage" class="yomitan-message" role="status"></div>
+            </div>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">Installed</h3>
+                <div id="yomitanList"></div>
+                <p id="yomitanTotals" class="fieldDescription"></p>
+            </div>
+        </div>
+    </div>
+</div>

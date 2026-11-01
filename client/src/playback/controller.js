@@ -11,6 +11,7 @@ import {PlaybackSession} from './session.js';
 const POLL_INTERVAL_MS = 250;
 
 const VIDEO_SELECTOR = 'video.htmlvideoplayer';
+const DICTIONARY_SETTINGS = new Set(['dictionaryOrder', 'disabledDictionaries']);
 
 /** What a session needs to know about the current playback, read fresh each time. */
 class PlaybackView {
@@ -92,14 +93,15 @@ export class PlaybackController extends EventTarget {
     _onPlaybackStop = () => this._check();
 
     _onSettingChanged = ({detail: {name, value}}) => {
-        if (name !== 'enabled') {
-            return;
-        }
-
-        if (value) {
-            this._follow(this.playbackManager.getCurrentPlayer());
-        } else {
-            this._stopFollowing({playing: true});
+        if (name === 'enabled') {
+            if (value) {
+                this._follow(this.playbackManager.getCurrentPlayer());
+            } else {
+                this._stopFollowing({playing: true});
+            }
+        } else if (DICTIONARY_SETTINGS.has(name) && this.session?.problem) {
+            // The set that left this session with nothing may be a usable one now. The next poll starts over.
+            this._key = null;
         }
     };
 
@@ -159,7 +161,7 @@ export class PlaybackController extends EventTarget {
             events: this._events,
             settings: this.settings,
             getEngine: () => {
-                this.engine ??= new Engine();
+                this.engine ??= new Engine({settings: this.settings});
                 return this.engine;
             },
             emit: (type, detail) => this.dispatchEvent(new CustomEvent(type, {detail: {...detail, session: this.session}})),

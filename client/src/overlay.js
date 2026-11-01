@@ -16,7 +16,7 @@ const CSS = `
     padding: max(4%, var(--yomitan-osd-top, 0px)) 5% max(var(--yomitan-bottom, 8%), var(--yomitan-osd-bottom, 0px));
     box-sizing: border-box;
     color: #fff;
-    font-size: clamp(18px, min(5vh, 6vw), 44px);
+    font-size: calc(clamp(18px, min(5vh, 6vw), 44px) * var(--yomitan-font-scale, 1));
     line-height: 1.4;
     text-align: center;
     text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 4px #000;
@@ -106,6 +106,11 @@ export class Overlay {
         }
 
         this.element.hidden = cues.length === 0;
+    }
+
+    /** @param {number} percent The `fontScale` setting. */
+    setFontScale(percent) {
+        this.element.style.setProperty('--yomitan-font-scale', `${percent / 100}`);
     }
 
     /**

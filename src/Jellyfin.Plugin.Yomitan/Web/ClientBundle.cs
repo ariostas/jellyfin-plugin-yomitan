@@ -8,6 +8,7 @@ public sealed class ClientBundle
     {
         Client = new ClientScript("Jellyfin.Plugin.Yomitan.client.js");
         Engine = new ClientScript("Jellyfin.Plugin.Yomitan.engine.js");
+        SettingsPage = new ClientScript("Jellyfin.Plugin.Yomitan.settings-page.js");
     }
 
     /// <summary>Gets the small loader that every page gets.</summary>
@@ -15,4 +16,7 @@ public sealed class ClientBundle
 
     /// <summary>Gets the engine, which the loader fetches when a video starts.</summary>
     public ClientScript Engine { get; }
+
+    /// <summary>Gets a user's settings page, which the loader fetches when someone opens it.</summary>
+    public ClientScript SettingsPage { get; }
 }

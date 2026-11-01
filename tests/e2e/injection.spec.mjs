@@ -155,7 +155,8 @@ test.describe('engine.js', () => {
         const {text} = await rawRequest('/web/');
         const script = new URL(tags(text)[0][1], `${server.url}/web/`);
         const loader = await rawRequest(`/Yomitan/client.js${script.search}`);
-        expect(loader.body.length).toBeLessThan(3 * 1024);
+        // 5 KB as of Phase 6, which added the settings store and the OSD's button. Every page loads this.
+        expect(loader.body.length).toBeLessThan(6 * 1024);
     });
 
     test('it carries Yomitan\'s license notice', async () => {

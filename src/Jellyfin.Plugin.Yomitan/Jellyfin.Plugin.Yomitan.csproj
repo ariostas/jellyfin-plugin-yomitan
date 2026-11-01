@@ -12,6 +12,9 @@
     <NuGetAuditMode>all</NuGetAuditMode>
     <ClientBundle>$(MSBuildThisFileDirectory)../../client/dist/client.js</ClientBundle>
     <EngineBundle>$(MSBuildThisFileDirectory)../../client/dist/engine.js</EngineBundle>
+    <SettingsPageBundle>$(MSBuildThisFileDirectory)../../client/dist/settings-page.js</SettingsPageBundle>
+    <AdminBundle>$(MSBuildThisFileDirectory)../../client/dist/admin.js</AdminBundle>
+    <AdminPage>$(MSBuildThisFileDirectory)../../client/src/admin/admin.html</AdminPage>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,11 +35,14 @@
   <ItemGroup>
     <EmbeddedResource Include="$(ClientBundle)" LogicalName="Jellyfin.Plugin.Yomitan.client.js" />
     <EmbeddedResource Include="$(EngineBundle)" LogicalName="Jellyfin.Plugin.Yomitan.engine.js" />
+    <EmbeddedResource Include="$(SettingsPageBundle)" LogicalName="Jellyfin.Plugin.Yomitan.settings-page.js" />
+    <EmbeddedResource Include="$(AdminBundle)" LogicalName="Jellyfin.Plugin.Yomitan.admin.js" />
+    <EmbeddedResource Include="$(AdminPage)" LogicalName="Jellyfin.Plugin.Yomitan.admin.html" />
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../third_party/yomitan/ext/data/schemas/dictionary-*-schema.json" LogicalName="Jellyfin.Plugin.Yomitan.schemas.%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)') Or !Exists('$(EngineBundle)')">
-    <Error Text="client/dist/client.js or engine.js is missing. Build through scripts/build.sh, which builds the client first." />
+  <Target Name="RequireClientBundle" BeforeTargets="BeforeBuild" Condition="!Exists('$(ClientBundle)') Or !Exists('$(EngineBundle)') Or !Exists('$(SettingsPageBundle)') Or !Exists('$(AdminBundle)')">
+    <Error Text="A bundle in client/dist is missing. Build through scripts/build.sh, which builds the client first." />
   </Target>
 
   <Target Name="WritePluginManifest" AfterTargets="Publish">

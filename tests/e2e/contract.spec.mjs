@@ -4,7 +4,7 @@ import {readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect, test} from '@playwright/test';
 import {clientFor, deleteAll, waitForJob} from '../lib/dictionaries.mjs';
-import {credentials} from '../lib/jellyfin.mjs';
+import {credentials, defaultSettings, saveSettings} from '../lib/jellyfin.mjs';
 import {makeDictionary} from '../lib/zip.mjs';
 
 const root = new URL('../../', import.meta.url).pathname;
@@ -49,7 +49,7 @@ function parseMessage(text) {
 }
 
 // Values that differ between runs. Only their kind has to match.
-const volatile = new Set(['id', 'importDate', 'createdAt', 'startedAt', 'finishedAt', 'sizeBytes', 'databaseBytes', 'freeBytes', 'bytesProcessed']);
+const volatile = new Set(['id', 'revision', 'importDate', 'createdAt', 'startedAt', 'finishedAt', 'sizeBytes', 'databaseBytes', 'freeBytes', 'bytesProcessed']);
 
 // A job's first response races with the worker.
 const racy = new Set(['state', 'phase', 'title', 'progress']);
@@ -83,6 +83,7 @@ test('every example in docs/api.md does what it says', async () => {
     test.setTimeout(60_000);
     const client = await clientFor(credentials.username, credentials.password);
     await deleteAll(client);
+    await saveSettings(credentials, defaultSettings);
 
     const document = readFileSync(documentPath, 'utf8');
     const examples = [...document.matchAll(pattern)];
@@ -148,7 +149,8 @@ test.describe('the tables in docs/api.md', () => {
     const read = (file) => readFileSync(join(source, file), 'utf8');
     const allSource = readdirSync(join(source, 'Dictionaries'))
         .map((file) => read(`Dictionaries/${file}`))
-        .concat(read('Api/DictionaryController.cs'))
+        .concat(readdirSync(join(source, 'Settings')).map((file) => read(`Settings/${file}`)))
+        .concat(read('Api/DictionaryController.cs'), read('Api/SettingsController.cs'))
         .join('\n');
 
     test('list the real query limits', () => {
@@ -195,15 +197,54 @@ test.describe('the tables in docs/api.md', () => {
     });
 
     test('name every route the controller has', () => {
-        const controller = read('Api/DictionaryController.cs');
-        const routes = [...controller.matchAll(/\[Http(Get|Post|Delete)\("([^"]+)"\)\]/g)]
+        const controllers = read('Api/DictionaryController.cs') + read('Api/SettingsController.cs');
+        const routes = [...controllers.matchAll(/\[Http(Get|Post|Put|Delete)\("([^"]+)"\)\]/g)]
             .map(([, method, path]) => `${method.toUpperCase()} /Yomitan/${path.replace('{id:guid}', '{id}')}`);
-        expect(routes.length).toBe(6);
+        expect(routes.length).toBe(8);
         for (const route of routes) {
             expect(document, route).toContain(`### \`${route}\``);
         }
 
         expect([...document.matchAll(/^### `(\w+ \/Yomitan\/\S+)`$/gm)].map(([, route]) => route).sort()).toEqual([...routes].sort());
+    });
+
+    test('say who can call every route', () => {
+        const section = document.slice(document.indexOf('### Who can call what'), document.indexOf('## Limits'));
+        for (const route of [...document.matchAll(/^### `(\w+ \/Yomitan\/\S+)`$/gm)].map(([, name]) => name)) {
+            expect(section, route).toContain(`| \`${route}\` |`);
+        }
+    });
+
+    test('list the real settings, with the real bounds, and the client agrees', async () => {
+        const validator = read('Settings/SettingsValidator.cs');
+        const constant = (name) => Function(`return ${new RegExp(`const int ${name} = ([^;]+);`).exec(validator)[1]}`)();
+        const section = document.slice(document.indexOf('## Settings'), document.indexOf('## Error codes'));
+        const hover = `0 to ${constant('MaxHoverMs')}`;
+        expect(section).toContain(`| \`hoverDelayMs\` | integer | ${defaultSettings.hoverDelayMs} | ${hover} |`);
+        expect(section).toContain(`| \`hoverGraceMs\` | integer | ${defaultSettings.hoverGraceMs} | ${hover} |`);
+        expect(section).toContain(`| \`fontScale\` | integer | ${defaultSettings.fontScale} | ${constant('MinFontScale')} to ${constant('MaxFontScale')}, in percent |`);
+        expect(section).toContain(`At most ${constant('MaxDictionaries')}, each 1 to ${constant('MaxTitleLength')} characters`);
+        expect(section).toContain(`\`MaxRequestBytes\` for this API is ${constant('MaxRequestBytes')}`);
+        for (const name of Object.keys(defaultSettings)) {
+            expect(section, name).toContain(`| \`${name}\` |`);
+            expect(validator, name).toContain(`["${name}"] = element =>`);
+        }
+
+        const client = readFileSync(join(root, 'client/src/settings.js'), 'utf8');
+        expect(client).toContain(`hoverDelayMs: {min: 0, max: ${constant('MaxHoverMs')}}`);
+        expect(client).toContain(`hoverGraceMs: {min: 0, max: ${constant('MaxHoverMs')}}`);
+        expect(client).toContain(`fontScale: {min: ${constant('MinFontScale')}, max: ${constant('MaxFontScale')}}`);
+    });
+
+    test('every error a job can end in has plain words on the dashboard page', () => {
+        const section = document.slice(document.indexOf('## Error codes'), document.indexOf('## Where this differs'));
+        const messages = readFileSync(join(root, 'client/src/admin/messages.js'), 'utf8');
+        const codes = [...section.matchAll(/^\| `(\w+)` \| ([^|]+) \|/gm)].filter(([, , where]) => /Job|413|429/.test(where) || where === '400').map(([, code]) => code);
+        const forUpload = codes.filter((code) => !/operation|dictionaries|items|setting|json|invalid_request|no_user/.test(code));
+        expect(forUpload.length).toBeGreaterThan(10);
+        for (const code of forUpload) {
+            expect(messages, code).toMatch(new RegExp(`^ {4}${code}:`, 'm'));
+        }
     });
 
     test('name every operation, and each runs in the batch example', () => {

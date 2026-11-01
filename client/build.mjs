@@ -1,5 +1,5 @@
-// Builds the two scripts the plugin serves: client.js, the small loader on every page, and engine.js, which the
-// loader fetches when a video starts. Set YOMITAN_FULL_ENGINE=1 to keep every language, for comparing sizes.
+// Builds the scripts the plugin serves: client.js, the small loader on every page, engine.js, which the loader fetches when
+// a video starts, settings-page.js, which it fetches when someone opens their settings, and admin.js for the dashboard. Set YOMITAN_FULL_ENGINE=1 to keep every language, for comparing sizes.
 import {createHash} from 'node:crypto';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
@@ -91,15 +91,36 @@ const engine = await build({
 });
 await writeBundle(engine.outputFiles[0]);
 
-// The same hash the server serves the file under, so a new engine is a new URL.
-const engineVersion = createHash('sha256').update(engine.outputFiles[0].contents).digest('hex').slice(0, 16);
+// The same hash the server serves each file under, so a new build is a new URL.
+const contentVersion = ({contents}) => createHash('sha256').update(contents).digest('hex').slice(0, 16);
+
+const settingsPage = await build({
+    ...common,
+    entryPoints: ['src/settings-page/entry.js'],
+    outfile: 'dist/settings-page.js',
+    format: 'esm',
+    write: false,
+});
+await writeBundle(settingsPage.outputFiles[0]);
+
+// jellyfin-web imports this one itself, through its route for a plugin's pages.
+await build({
+    ...common,
+    entryPoints: ['src/admin/entry.js'],
+    outfile: 'dist/admin.js',
+    format: 'esm',
+});
 
 const client = await build({
     ...common,
     entryPoints: ['src/main.js'],
     outfile: 'dist/client.js',
     format: 'iife',
-    define: {__CLIENT_VERSION__: JSON.stringify(version), __ENGINE_VERSION__: JSON.stringify(engineVersion)},
+    define: {
+        __CLIENT_VERSION__: JSON.stringify(version),
+        __ENGINE_VERSION__: JSON.stringify(contentVersion(engine.outputFiles[0])),
+        __SETTINGS_PAGE_VERSION__: JSON.stringify(contentVersion(settingsPage.outputFiles[0])),
+    },
     write: false,
 });
 await writeBundle(client.outputFiles[0]);

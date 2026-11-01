@@ -1,20 +1,32 @@
 // Yomitan's Translator on top of the server's dictionaries. This is the only module that knows about the Translator,
 // and what Phase 4's popup calls for a lookup.
 import {Translator} from '../../../third_party/yomitan/ext/js/language/translator.js';
+import {chooseDictionaries, hasTerms} from './dictionary-set.js';
 import {QueryClient} from './query-client.js';
 import {RecordingDb, RemoteDb} from './remote-db.js';
 import {TermStore} from './term-store.js';
 import {yieldIfBusy} from './yield.js';
 
 export class NoDictionariesError extends Error {
-    constructor() {
-        super('No dictionaries are installed');
+    /** @param {'none'|'disabled'|'no-terms'} reason Nothing is installed, all of it is off, or what is on has no words. */
+    constructor(reason) {
+        super(`No usable dictionaries: ${reason}`);
+        this.reason = reason;
     }
 }
 
+/** With no settings, every dictionary is on, in import order. */
+const ALL_DICTIONARIES = {get: () => []};
+
 export class Engine extends EventTarget {
-    constructor() {
+    /**
+     * @param {object} [options]
+     * @param {import('../settings.js').Settings} [options.settings] Which dictionaries to use.
+     */
+    constructor({settings} = {}) {
         super();
+        this._settings = settings ?? ALL_DICTIONARIES;
+        settings?.addEventListener('change', this._onSettingChanged);
         this._client = new QueryClient((dictionaries) => this._onDictionariesChanged(dictionaries));
         this._terms = new TermStore(async (terms) => {
             const [result] = await this._client.send([
@@ -51,6 +63,24 @@ export class Engine extends EventTarget {
         return this._client.dictionaries ?? [];
     }
 
+    /** @returns {string[]} The dictionaries in use, highest priority first. */
+    get titles() {
+        return this._titles;
+    }
+
+    /** @returns {'none'|'disabled'|'no-terms'|null} Why there is nothing to look words up in, if there is not. */
+    get unusable() {
+        if (this.dictionaries.length === 0) {
+            return 'none';
+        }
+
+        if (this._titles.length === 0) {
+            return 'disabled';
+        }
+
+        return this.dictionaries.some((dictionary) => this._titles.includes(dictionary.title) && hasTerms(dictionary)) ? null : 'no-terms';
+    }
+
     /** @returns {{terms: number, rows: number}} What is cached now. */
     get cacheSize() {
         return this._terms.size;
@@ -66,8 +96,9 @@ export class Engine extends EventTarget {
         this._client.bind(apiClient);
         await this._client.send([]);
         this._useDictionaries(this._client.dictionaries);
-        if (this._titles.length === 0) {
-            throw new NoDictionariesError();
+        const reason = this.unusable;
+        if (reason) {
+            throw new NoDictionariesError(reason);
         }
     }
 
@@ -78,8 +109,9 @@ export class Engine extends EventTarget {
     }
 
     _useDictionaries(dictionaries) {
-        this._titles = dictionaries.map(({title}) => title);
-        const enabledDictionaryMap = new Map(dictionaries.map(({title}, index) => [title, {
+        const chosen = chooseDictionaries(dictionaries, this._settings);
+        this._titles = chosen.map(({title}) => title);
+        const enabledDictionaryMap = new Map(chosen.map(({title}, index) => [title, {
             index,
             alias: title,
             allowSecondarySearches: false,
@@ -102,6 +134,19 @@ export class Engine extends EventTarget {
             enabledDictionaryMap,
         };
     }
+
+    /** The same as a dictionary being replaced: nothing cached says anything about the new set. */
+    _onSettingChanged = ({detail: {name}}) => {
+        const {dictionaries} = this._client;
+        if (!dictionaries || (name !== 'dictionaryOrder' && name !== 'disabledDictionaries')) {
+            return;
+        }
+
+        const titles = chooseDictionaries(dictionaries, this._settings).map(({title}) => title);
+        if (JSON.stringify(titles) !== JSON.stringify(this._titles)) {
+            this._onDictionariesChanged(dictionaries);
+        }
+    };
 
     _onDictionariesChanged(dictionaries) {
         this._useDictionaries(dictionaries);

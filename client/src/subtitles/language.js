@@ -41,17 +41,24 @@ function looksJapanese(texts) {
         && kana / japanese >= MIN_KANA_SHARE;
 }
 
+function languageTag(stream) {
+    return (stream.Language ?? '').trim().toLowerCase().split(/[-_]/)[0];
+}
+
 /**
- * The one place that decides whether the plugin takes over a track. Phase 6 can add a setting here.
+ * @param {{Language?: string|null}} stream
+ * @returns {boolean} True if {@link isJapaneseTrack} has to read the track's text, because its tag says nothing.
+ */
+export function languageNeedsText(stream) {
+    return UNDETERMINED_TAGS.has(languageTag(stream));
+}
+
+/**
+ * The one place that decides whether the plugin takes over a track.
  * @param {{Language?: string|null}} stream A subtitle stream from `playbackManager.subtitleTracks()`.
  * @param {{text: string}[]} cues The track's cues.
  * @returns {boolean} True for a track tagged Japanese, and for an untagged one whose text is.
  */
 export function isJapaneseTrack(stream, cues) {
-    const [tag] = (stream.Language ?? '').trim().toLowerCase().split(/[-_]/);
-    if (JAPANESE_TAGS.has(tag)) {
-        return true;
-    }
-
-    return UNDETERMINED_TAGS.has(tag) && looksJapanese(cues.map(({text}) => text));
+    return JAPANESE_TAGS.has(languageTag(stream)) || (languageNeedsText(stream) && looksJapanese(cues.map(({text}) => text)));
 }
