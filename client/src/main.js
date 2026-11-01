@@ -14,9 +14,9 @@ const SYNC_NOTICES = {
 
 function load() {
     // Relative to this script, so it works under a BaseUrl or a reverse proxy's prefix.
-    const scriptUrl = (name, version) => new URL(`${name}?v=${version}`, document.currentScript.src).href;
-    const engineUrl = scriptUrl('engine.js', __ENGINE_VERSION__);
-    const settingsPageUrl = scriptUrl('settings-page.js', __SETTINGS_PAGE_VERSION__);
+    const scriptUrl = (path) => new URL(path, document.currentScript.src).href;
+    const engineUrl = scriptUrl(`engine.js?v=${__ENGINE_VERSION__}`);
+    const settingsPageUrl = scriptUrl(`settings-page.js?v=${__SETTINGS_PAGE_VERSION__}`);
     const settings = new Settings();
     const state = {version: __CLIENT_VERSION__, settings};
     window.__yomitanJellyfin = state;

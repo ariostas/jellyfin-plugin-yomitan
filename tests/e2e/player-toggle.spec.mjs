@@ -203,8 +203,11 @@ test.describe('with a keyboard or a remote', () => {
         expect(await isPaused(page)).toBe(paused);
         expect(await page.evaluate(() => document.activeElement?.className)).toContain('btnYomitan');
 
-        // The OSD hides by itself and takes the focus with it, so this goes back to where it was.
-        await showOsd(page, false);
+        // Enter paused the video, and on a paused video Left enters word mode, unless the user chose Up only.
+        await page.evaluate(() => window.__yomitanJellyfin.settings.set('upOnlyEntry', true));
+        // The OSD hides by itself and takes the focus with it, so moving the mouse starts its clock over first.
+        await page.mouse.move(300, 300, {steps: 2});
+        await expect.poll(() => osdShowing(page)).toBe(true);
         await page.evaluate(() => document.querySelector('.btnYomitan').focus());
         await page.keyboard.press('ArrowLeft');
         await expect.poll(() => page.evaluate(() => document.activeElement?.className)).toContain('btnSubtitles');

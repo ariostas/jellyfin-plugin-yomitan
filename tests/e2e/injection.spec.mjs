@@ -120,6 +120,17 @@ test.describe('engine.js', () => {
         return /engine\.js\?v=([0-9a-f]{16})/.exec(loader)[0];
     };
 
+    test('the loader names the settings page by the hash the server serves it under too', async () => {
+        const {text} = await rawRequest('/web/');
+        const script = new URL(tags(text)[0][1], `${server.url}/web/`);
+        const loader = (await rawRequest(`/Yomitan/client.js${script.search}`)).text;
+        const url = /settings-page\.js\?v=([0-9a-f]{16})/.exec(loader)[0];
+        const {status, headers} = await rawRequest(`/Yomitan/${url}`);
+        expect(status).toBe(200);
+        expect(headers['cache-control']).toContain('immutable');
+        expect(headers.etag).toBe(`"${url.split('=')[1]}"`);
+    });
+
     test('the loader names the hash the server serves it under', async () => {
         const url = await engineUrl();
         const {status, headers} = await rawRequest(`/Yomitan/${url}`);
@@ -154,7 +165,7 @@ test.describe('engine.js', () => {
 
         const {text} = await rawRequest('/web/');
         const script = new URL(tags(text)[0][1], `${server.url}/web/`);
-        const loader = await rawRequest(`/Yomitan/client.js${script.search}`);
+        const loader = await rawRequest(`/Yomitan/client.js${script.search}`, {headers: {'Accept-Encoding': 'br'}});
         // 5 KB as of Phase 6, which added the settings store and the OSD's button. Every page loads this.
         expect(loader.body.length).toBeLessThan(6 * 1024);
     });

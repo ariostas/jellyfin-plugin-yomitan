@@ -3,7 +3,7 @@
 // is compared with what the same key does with the plugin off, because that is the claim, and no list here could keep up
 // with what jellyfin-web does with a key.
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
-import {credentials, getMovies, logIn, play} from '../lib/jellyfin.mjs';
+import {credentials, getMovies, logIn, play, readSettings} from '../lib/jellyfin.mjs';
 import {
     effectOf, expectCursor, expectLeft, inWordMode, jellyfinState, pressCode, REMOTE_KEYS, setEnabled, setPlayer, setUpOnly,
     useTvLayout, waitForActive,
@@ -954,7 +954,7 @@ test.describe('the setting', () => {
         expect(await page.evaluate(() => window.__yomitanJellyfin.settings.get('upOnlyEntry'))).toBe(false);
         await page.evaluate(() => window.__yomitanJellyfin.settings.set('upOnlyEntry', true));
         await page.reload();
-        await page.waitForFunction(() => window.__yomitanJellyfin);
-        expect(await page.evaluate(() => window.__yomitanJellyfin.settings.get('upOnlyEntry'))).toBe(true);
+        await page.waitForFunction(() => window.__yomitanJellyfin?.settings.get('upOnlyEntry') === true);
+        await expect.poll(async () => (await readSettings(credentials)).upOnlyEntry).toBe(true);
     });
 });
