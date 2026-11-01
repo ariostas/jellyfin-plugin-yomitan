@@ -40,8 +40,8 @@ export const IGNORED_PAGE_ERRORS = [
         why: 'jellyfin-web\'s menus reject a promise nobody handles when they close with no choice made. It is the same with the plugin off',
     },
     {
-        pattern: /^Error: CancelledError/,
-        why: 'jellyfin-web\'s query library, when signing out or moving on cancels a request. It happens with the plugin blocked',
+        pattern: /CancelledError/,
+        why: 'jellyfin-web\'s query library, when signing out or moving on cancels a request, as a page error or a rejection. It happens with the plugin blocked',
     },
     {
         pattern: /Loading chunk \d+ failed/,

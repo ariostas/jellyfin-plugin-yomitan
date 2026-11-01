@@ -100,7 +100,9 @@ test('the settings page takes effect in playback', async ({page, isMobile}) => {
     await expect.poll(size).toBeCloseTo(normal * 2);
     await expect.poll(async () => (await readSettings(user)).fontScale).toBe(200);
 
+    // jellyfin-web goes back by itself when a video stops, which would undo a move made before that.
     await page.evaluate(() => window.__yomitanJellyfin.playbackManager.stop());
+    await page.waitForURL((url) => !url.hash.includes('video'));
     await page.goto('web/#/mypreferencesmenu');
     await click(page.locator('.yomitan-settings-link'), isMobile);
     const slider = page.locator('#yomitan-setting-fontScale');
