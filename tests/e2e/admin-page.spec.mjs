@@ -314,6 +314,20 @@ test.describe('real dictionaries', () => {
         await showLine(page, LINES.plain);
         await moveToWord(page, '学校');
         await expectPopup(page, '学校');
+        await parkMouse(page);
+        await expect.poll(() => isPaused(page)).toBe(false);
+
+        // Deleted through the page, the entry goes and so does what it fed, and KANJIDIC alone cannot split a line.
+        const second = await page.context().newPage();
+        await second.goto('web/#/configurationpage?name=yomitan');
+        await second.getByRole('button', {name: /^Delete JMdict/}).click();
+        await second.locator('.yomitan-confirm-delete').click();
+        await expect(second.locator('#yomitanMessage')).toContainText('is deleted', {timeout: 60_000});
+        await second.close();
+        await page.evaluate(() => window.__yomitanJellyfin.playback.engine.prefetch(['知らない言葉']));
+        await page.waitForFunction(() => window.__yomitanJellyfin.playback.session?.state === 'inactive');
+        await expect(page.locator('.yomitan-notice')).toContainText('hold no words');
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
     });
 });
 

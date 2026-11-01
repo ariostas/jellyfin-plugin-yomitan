@@ -93,7 +93,10 @@ test.describe('the network never holds anything up', () => {
         await page.reload();
         await signedIn(page, alice);
         expect(await store(page)).toMatchObject({enabled: true, delay: 321});
+        // Well under the 15 s a silent request takes to time out, so nothing was waiting for it.
+        const started = Date.now();
         await startLookupFilm(page);
+        expect(Date.now() - started).toBeLessThan(12_000);
         await page.unroute(SETTINGS);
     });
 
@@ -301,9 +304,36 @@ test.describe('two users on one browser', () => {
         expect((await readSettings(bob)).hoverDelayMs).toBe(200);
     });
 
+    test('a write due as the user changes, before the store has heard, stays where it is', async ({page}) => {
+        await logIn(page, {user: alice, settings: {hoverDelayMs: 200}});
+        await signedIn(page, alice);
+        const failing = (route) => (route.request().method() === 'PUT' ? route.abort() : route.continue());
+        await page.route(SETTINGS, failing);
+        await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverDelayMs', 777));
+        await expect.poll(() => store(page)).toMatchObject({sync: 'retrying'});
+
+        // Someone else's token, with no page shown yet to tell the store. The server would file this under them.
+        await page.unroute(SETTINGS, failing);
+        await page.evaluate((id) => {
+            window.ApiClient.getCurrentUserId = () => id;
+        }, bob.id);
+        let writes = 0;
+        page.on('request', (request) => {
+            writes += request.url().endsWith('/Yomitan/Settings') && request.method() === 'PUT' ? 1 : 0;
+        });
+        await page.waitForTimeout(6000);
+        expect(writes).toBe(0);
+        expect(await page.evaluate((id) => JSON.parse(localStorage.getItem(`yomitan.settings.${id}`)).pending, alice.id)).toEqual({hoverDelayMs: 777});
+
+        await page.reload();
+        await expect.poll(async () => (await readSettings(alice)).hoverDelayMs).toBe(777);
+    });
+
     test('an answer for one user that lands after they left is dropped', async ({page}) => {
+        // A new user, so that their revision is lower than Alice's, and only the user tells the answer apart.
+        const carol = await createUser('carol');
+        await saveSettings(carol, {hoverDelayMs: 200, enabled: false});
         await saveSettings(alice, {hoverDelayMs: 811, enabled: true});
-        await saveSettings(bob, {hoverDelayMs: 200, enabled: false});
         await page.goto('web/');
         let release;
         const held = new Promise((resolve) => {
@@ -321,12 +351,13 @@ test.describe('two users on one browser', () => {
         await fillLogin(page, alice);
         await signedIn(page, alice);
         await signOut(page);
-        await fillLogin(page, bob);
-        await expect.poll(() => store(page)).toMatchObject({user: bob.id, delay: 200});
+        await fillLogin(page, carol);
+        await expect.poll(() => store(page)).toMatchObject({user: carol.id, delay: 200});
         release();
         await page.waitForTimeout(500);
-        expect(await store(page)).toMatchObject({user: bob.id, delay: 200, enabled: false});
+        expect(await store(page)).toMatchObject({user: carol.id, delay: 200, enabled: false});
         await page.unroute(SETTINGS);
+        await deleteUser(carol);
     });
 });
 

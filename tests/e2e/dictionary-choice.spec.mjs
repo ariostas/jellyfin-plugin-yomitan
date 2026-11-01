@@ -9,7 +9,7 @@ import {jellyfinLine, overlayWords} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 import {makeDictionary} from '../lib/zip.mjs';
 
-test.describe.configure({timeout: 120_000, mode: 'serial'});
+test.describe.configure({timeout: 120_000});
 
 const beta = () => makeDictionary({title: 'Beta', format: 3, revision: '1', sequenced: true}, {
     'term_bank_1.json': [['学校', 'がっこう', 'n', '', 0, ['beta school'], 1, ''], ['昨日', 'きのう', 'n', '', 0, ['beta yesterday'], 2, '']],
@@ -30,6 +30,11 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
     await deleteAll(admin);
+});
+
+test.afterEach(async () => {
+    await admin.remove('Gamma');
+    await expect.poll(async () => (await (await admin.list()).json()).dictionaries.some(({title}) => title === 'Gamma')).toBe(false);
 });
 
 const setDictionaries = (page, name, value) => page.evaluate(([setting, titles]) => window.__yomitanJellyfin.settings.set(setting, titles), [name, value]);
@@ -140,7 +145,7 @@ test('one installed after the user saved is on, and the last, with no one touchi
         const text = await open(page, '学校');
         expect(text.indexOf('gamma school')).toBeGreaterThan(text.indexOf('beta school'));
     } finally {
-        await admin.remove('Gamma');
+        await parkMouse(page);
     }
 });
 
@@ -187,13 +192,14 @@ test.describe('with real dictionaries', () => {
         const names = await known(page);
         console.log('with JMnedict and KANJIDIC only, the line splits as', names);
 
-        // A names dictionary still knows 学校 as a surname, if it does at all. The dictionary entry is gone either way.
-        if (names.includes('学校')) {
-            const text = await open(page, '学校');
-            expect(text).not.toContain('JMdict');
-            expect(text).toContain('KANJIDIC');
-            await parkMouse(page);
-        }
+        // Only names are left, so 学校 falls apart, and what a piece of it shows comes from the dictionaries that are on.
+        expect(names).not.toContain('学校');
+        const text = await open(page, '学');
+        expect(text).not.toContain('JMdict');
+        expect(text).toContain('JMnedict');
+        expect(text).toContain('KANJIDIC');
+        await parkMouse(page);
+        await expect.poll(() => isPaused(page)).toBe(false);
 
         // KANJIDIC alone holds no words, so nothing can split a line, and the line goes back.
         await setDictionaries(page, 'disabledDictionaries', [jmdict, jmnedict]);
