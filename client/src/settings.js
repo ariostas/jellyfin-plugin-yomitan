@@ -169,6 +169,7 @@ export class Settings extends EventTarget {
         this._writeTimer = 0;
         this._attempts = 0;
         this._revision = -1;
+        this._refreshing = null;
         this._userId = id;
         const {values, pending} = id ? readCache(id) : {values: {}, pending: {}};
         this._pending = pending;
@@ -197,9 +198,15 @@ export class Settings extends EventTarget {
         }
 
         this._refreshedAt = performance.now();
-        this._refreshing ??= this._fetch(user).finally(() => {
-            this._refreshing = null;
-        });
+        if (!this._refreshing) {
+            const refreshing = this._fetch(user).finally(() => {
+                if (this._refreshing === refreshing) {
+                    this._refreshing = null;
+                }
+            });
+            this._refreshing = refreshing;
+        }
+
         return this._refreshing;
     }
 

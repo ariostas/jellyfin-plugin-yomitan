@@ -332,8 +332,7 @@ test.describe('two users on one browser', () => {
     test('an answer for one user that lands after they left is dropped', async ({page}) => {
         // A new user, so that their revision is lower than Alice's, and only the user tells the answer apart.
         const carol = await createUser('carol');
-        await saveSettings(carol, {hoverDelayMs: 200, enabled: false});
-        await saveSettings(alice, {hoverDelayMs: 811, enabled: true});
+        await saveSettings(carol, {hoverDelayMs: 333, enabled: false});
         await page.goto('web/');
         let release;
         const held = new Promise((resolve) => {
@@ -344,6 +343,9 @@ test.describe('two users on one browser', () => {
             if (first) {
                 first = false;
                 await held;
+                // By now Alice's token has ended, so the server would refuse it. This is the answer from before that.
+                await route.fulfill({json: {revision: 9999, settings: {hoverDelayMs: 811, enabled: true}}});
+                return;
             }
 
             await route.continue();
@@ -352,10 +354,11 @@ test.describe('two users on one browser', () => {
         await signedIn(page, alice);
         await signOut(page);
         await fillLogin(page, carol);
-        await expect.poll(() => store(page)).toMatchObject({user: carol.id, delay: 200});
+        // Her own answer does not wait behind the one still out for Alice.
+        await expect.poll(() => store(page)).toMatchObject({user: carol.id, delay: 333});
         release();
         await page.waitForTimeout(500);
-        expect(await store(page)).toMatchObject({user: carol.id, delay: 200, enabled: false});
+        expect(await store(page)).toMatchObject({user: carol.id, delay: 333, enabled: false});
         await page.unroute(SETTINGS);
         await deleteUser(carol);
     });
