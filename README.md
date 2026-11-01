@@ -107,7 +107,8 @@ cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/segmentati
 `tests/e2e/popup-real.spec.mjs` also takes `ja_50k.txt` from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords) and `accents.txt` from
 [Kanjium](https://github.com/mifunetoshiro/kanjium), both CC BY-SA 4.0, if they are in that directory, and makes real
-frequency and pitch dictionaries from them. It also measures how long a popup takes:
+frequency and pitch dictionaries from them. `jitendex-yomitan.zip` from [Jitendex](https://jitendex.org), also CC BY-SA 4.0,
+adds real images and a real stylesheet. It also measures how long a popup takes:
 
 ```sh
 cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test --project=chromium e2e/popup-real.spec.mjs
