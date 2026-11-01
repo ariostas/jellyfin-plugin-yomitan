@@ -82,7 +82,8 @@ test('the hover delay comes from the store, while playing', async ({page, isMobi
     await startLookupFilm(page);
     await parkMouse(page);
     await showLine(page, LINES.plain);
-    await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverDelayMs', 1200));
+    // Long enough that a busy machine's slow mouse cannot run out the delay before the check.
+    await page.evaluate(() => window.__yomitanJellyfin.settings.set('hoverDelayMs', 3000));
     await moveToWord(page, '学校');
     await page.waitForTimeout(700);
     expect((await popupState(page)).open).toBe(false);

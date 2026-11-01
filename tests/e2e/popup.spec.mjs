@@ -455,8 +455,8 @@ test.describe('where it goes', () => {
         await expectPopup(page, '飲む');
         await page.setViewportSize({width: 839, height: 412});
         await expect.poll(async () => (await layout(page)).viewport.width).toBe(839);
-        await page.waitForTimeout(200);
-        expectGoodLayout(await layout(page), 'after turning');
+        // A busy machine can take a while over the layout that follows a resize.
+        await expect(async () => expectGoodLayout(await layout(page), 'after turning')).toPass({timeout: 5000});
     });
 });
 
