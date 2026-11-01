@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     hoverDelayMs: 200,
     /** How long the popup survives the mouse leaving it and the word, so it can cross the gap between them. */
     hoverGraceMs: 300,
+    /** Whether only Up enters word mode, which leaves Left and Right to the OSD's buttons while paused. */
+    upOnlyEntry: false,
 });
 
 function read() {

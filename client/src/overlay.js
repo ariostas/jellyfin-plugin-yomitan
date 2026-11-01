@@ -34,6 +34,13 @@ const CSS = `
     -webkit-tap-highlight-color: transparent;
 }
 .yomitan-word.yomitan-active { background: rgba(88, 150, 255, 0.55); }
+.yomitan-word-mode .yomitan-word.yomitan-active,
+.yomitan-word-mode .yomitan-word.yomitan-active:hover {
+    background: #ffd400;
+    box-shadow: 0 0 0 0.08em #ffd400, 0 0 0 0.16em #000;
+    color: #000;
+    text-shadow: none;
+}
 @media (hover: hover) {
     .yomitan-word:not(.yomitan-unknown):hover { background: rgba(255, 255, 255, 0.16); }
     .yomitan-word.yomitan-active:hover { background: rgba(88, 150, 255, 0.55); }
@@ -170,6 +177,11 @@ export class Overlay {
         if (word) {
             this.wordElement(word)?.classList.add('yomitan-active');
         }
+    }
+
+    /** @param {boolean} on Whether the keys are moving the mark, which then has to stand out from across a room. */
+    setWordMode(on) {
+        this.element.classList.toggle('yomitan-word-mode', on);
     }
 
     /**

@@ -28,6 +28,10 @@ export const IGNORED_PAGE_ERRORS = [
         why: 'jellyfin-web\'s home screen in WebKit, whose requests are cut off when a test goes straight to the player',
     },
     {
+        pattern: /ActionSheet closed without resolving/,
+        why: 'jellyfin-web\'s menus reject a promise nobody handles when they close with no choice made. It is the same with the plugin off',
+    },
+    {
         pattern: /Loading chunk \d+ failed/,
         why: 'jellyfin-web lazily loading a card script for the home screen while the page moves on to the player',
     },

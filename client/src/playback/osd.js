@@ -13,6 +13,18 @@ function shownBar() {
     return bar && !bar.classList.contains('hide') && !bar.classList.contains('videoOsdBottom-hidden') ? bar : null;
 }
 
+/**
+ * Hides the OSD, which jellyfin-web only offers through Escape. Only ever with the OSD showing, because with nothing to
+ * hide, Escape means going back and leaves the player. As a second lock, the event goes no further than the document,
+ * where the OSD listens: going back is decided on the window.
+ */
+export function hideOsd() {
+    if (shownBar()) {
+        const escape = {key: 'Escape', code: 'Escape', keyCode: 27, which: 27, cancelable: true};
+        document.dispatchEvent(new KeyboardEvent('keydown', escape));
+    }
+}
+
 /** @returns {{top: number, bottom: number}} How many pixels the OSD's controls take at each end of the screen. */
 export function measureOsd() {
     const bar = shownBar();

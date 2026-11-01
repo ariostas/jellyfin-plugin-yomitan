@@ -33,6 +33,10 @@ export class PointerInput {
         /** The word under the mouse when someone closed its popup, which must not reopen until the mouse leaves it. */
         this._dismissed = null;
         this._swallowUntil = 0;
+        this._mouse = null;
+        /** Set while the keyboard is using the popup. Called when the mouse or a finger takes it back. */
+        this._onTakenBack = null;
+        this._restingAt = null;
 
         const capture = {capture: true, signal};
         const active = {capture: true, signal, passive: false};
@@ -61,17 +65,60 @@ export class PointerInput {
     }
 
     /**
+     * The keyboard is using the popup now, so nothing under way here may touch it, until someone really uses the mouse or
+     * a finger. That ends the keyboard's turn, and the popup carries on as if this class had opened it.
+     * @param {() => void} onTakenBack
+     */
+    standAside(onTakenBack) {
+        this._stopWaiting();
+        clearTimeout(this._graceTimer);
+        this._graceTimer = 0;
+        this._onTakenBack = onTakenBack;
+        this._restingAt = this._mouse;
+    }
+
+    /** The keyboard has finished. */
+    comeBack() {
+        this._onTakenBack = null;
+    }
+
+    _takeBack() {
+        const onTakenBack = this._onTakenBack;
+        this._onTakenBack = null;
+        onTakenBack?.();
+    }
+
+    /** @returns {boolean} Whether the keyboard is still in charge, as a hand resting on a mouse does not count. */
+    _isStandingAside(position) {
+        if (this._onTakenBack) {
+            this._restingAt ??= position;
+            if (Math.hypot(position.x - this._restingAt.x, position.y - this._restingAt.y) <= REST_RADIUS) {
+                return true;
+            }
+
+            this._takeBack();
+        }
+
+        return false;
+    }
+
+    /**
      * Only a move counts. A browser sends pointerover when a line appears under a mouse at rest, and that must not pause
      * the video, which is why this does not listen for it.
      */
     _onPointerMove = ({pointerType, target, clientX: x, clientY: y}) => {
-        if (pointerType !== 'touch' && this._openedBy !== 'touch') {
+        if (pointerType === 'touch') {
+            return;
+        }
+
+        this._mouse = {x, y};
+        if (!this._isStandingAside(this._mouse) && this._openedBy !== 'touch') {
             this._onHover(this._overlay.wordAt(target), this._isInPopup(target), {x, y});
         }
     };
 
     _onPointerLeave = ({pointerType}) => {
-        if (pointerType !== 'touch' && this._openedBy !== 'touch') {
+        if (pointerType !== 'touch' && this._openedBy !== 'touch' && !this._onTakenBack) {
             this._onHover(null, false, null);
         }
     };
@@ -141,6 +188,7 @@ export class PointerInput {
     _onPointerDown = (event) => {
         const {pointerType, target} = event;
         this._swallowUntil = 0;
+        this._takeBack();
         if (this._isInPopup(target)) {
             return;
         }

@@ -3,7 +3,7 @@ import {server} from './lib/jellyfin.mjs';
 
 // These specs drive real input and real playback, and run everywhere. The rest test the server or use Chromium's
 // debugger, so one browser says all they have to say.
-const everyBrowser = /(playback|popup|hover|touch|hostile|settings|native-subtitles)\.spec\.mjs$/;
+const everyBrowser = /(playback|popup|hover|touch|keys|hostile|settings|native-subtitles)\.spec\.mjs$/;
 
 // WebKit's libraries are not on this machine's system path, and scripts/webkit-deps.sh puts them where it looks.
 process.env.PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS ??= '1';

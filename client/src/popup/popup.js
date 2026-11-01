@@ -6,8 +6,6 @@ import {placePopup, popupWidth} from './placement.js';
 const FRAME_CSS = `
 :host {
     all: initial;
-    --font-size-no-units: 15;
-    --line-height-no-units: 21;
 }
 .popup-frame {
     display: flex;
@@ -54,6 +52,20 @@ const DISPLAY_OPTIONS = {
     showPronunciationDownstepPosition: 'true',
     showPronunciationGraph: 'true',
 };
+
+/** The text in jellyfin-web's TV layout, as a share of the screen's height, since it is read from across a room. */
+const TV_TEXT_SHARE = 0.024;
+const TV_MIN_FONT_SIZE = 20;
+/** The usual proportions, and the extension's defaults. */
+const FONT_SIZE = 15;
+const LINE_HEIGHT = 21 / 15;
+
+/** @returns {number} The popup's text size in pixels, on this screen. */
+function fontSize() {
+    return document.documentElement.classList.contains('layout-tv') ?
+        Math.max(TV_MIN_FONT_SIZE, Math.round(innerHeight * TV_TEXT_SHARE)) :
+        FONT_SIZE;
+}
 
 const STYLE_ID = 'yomitan-popup-style';
 const HOST_CSS = `
@@ -132,15 +144,18 @@ export class Popup {
     place(anchor, {bottom}) {
         const {host, _frame: frame, _scroll: scroll} = this;
         const viewport = {width: innerWidth, height: innerHeight};
+        const size = fontSize();
         host.style.visibility = 'hidden';
-        host.style.width = `${popupWidth(viewport.width)}px`;
+        host.style.setProperty('--font-size-no-units', `${size}`);
+        host.style.setProperty('--line-height-no-units', `${Math.round(size * LINE_HEIGHT)}`);
+        host.style.width = `${popupWidth(viewport.width, size)}px`;
         host.style.left = '0';
         host.style.top = '0';
         frame.style.height = 'auto';
         const contentHeight = scroll.scrollHeight + 2;
         const {left, right} = anchor.getBoundingClientRect();
         const {top, bottom: end} = anchor.closest('.yomitan-lines, .yomitan-signs').getBoundingClientRect();
-        const placement = placePopup({viewport, anchor: {left, right, top, bottom: end}, contentHeight, avoidBottom: bottom});
+        const placement = placePopup({viewport, anchor: {left, right, top, bottom: end}, contentHeight, avoidBottom: bottom, fontSize: size});
         const height = Math.min(contentHeight, placement.maxHeight);
         host.style.left = `${placement.left}px`;
         host.style.top = `${placement.top}px`;

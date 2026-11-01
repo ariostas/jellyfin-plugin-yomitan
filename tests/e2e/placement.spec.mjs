@@ -10,12 +10,16 @@ function* cases() {
                     for (const wordWidth of [12, 80, 400]) {
                         for (const contentHeight of [40, 200, 700, 4000]) {
                             for (const avoidBottom of [0, 120]) {
-                                yield {
-                                    viewport: {width, height},
-                                    anchor: {left, right: Math.min(left + wordWidth, width), top, bottom: top + 24},
-                                    contentHeight,
-                                    avoidBottom,
-                                };
+                                // The usual size, and the TV layout's.
+                                for (const fontSize of [15, 26]) {
+                                    yield {
+                                        viewport: {width, height},
+                                        anchor: {left, right: Math.min(left + wordWidth, width), top, bottom: top + 24},
+                                        contentHeight,
+                                        avoidBottom,
+                                        fontSize,
+                                    };
+                                }
                             }
                         }
                     }
@@ -29,10 +33,10 @@ test('on every shape of screen it stays on it, and never covers the word', () =>
     let count = 0;
     const wrong = [];
     for (const situation of cases()) {
-        const {viewport, anchor, contentHeight} = situation;
+        const {viewport, anchor, contentHeight, fontSize} = situation;
         const {left, top, maxHeight} = placePopup(situation);
         const height = Math.min(contentHeight, maxHeight);
-        const onScreen = left >= 0 && left + popupWidth(viewport.width) <= viewport.width && top >= 0 && top + height <= viewport.height;
+        const onScreen = left >= 0 && left + popupWidth(viewport.width, fontSize) <= viewport.width && top >= 0 && top + height <= viewport.height;
         const clearOfWord = top + height <= anchor.top || top >= anchor.bottom;
         count += 1;
         if (!onScreen || !clearOfWord) {

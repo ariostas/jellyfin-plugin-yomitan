@@ -6,7 +6,8 @@ import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, logIn} from '../lib/jellyfin.mjs';
-import {expectNoPopup, expectPopup, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm, wordCentre} from '../lib/lookup.mjs';
+import {expectCursor, useTvLayout} from '../lib/keys.mjs';
+import {expectNoPopup, expectPopup, LINES, moveToWord, parkMouse, pauseVideo, popupState, showLine, startLookupFilm, wordCentre} from '../lib/lookup.mjs';
 import {makeFrequencyDictionary, makePitchDictionary} from '../lib/real-meta-dictionaries.mjs';
 import {expect, test} from '../lib/test.mjs';
 
@@ -110,6 +111,33 @@ for (const [name, viewport, line, word, term] of [
         const {scrollHeight, clientHeight, box} = await popupState(page);
         console.log(`${name}: entries are ${scrollHeight} px, showing ${clientHeight} px, popup ${Math.round(box.width)} by ${Math.round(box.height)}`);
         await page.screenshot({path: testInfo.outputPath(`${name}.png`)});
+    });
+}
+
+for (const [name, viewport, tv] of [['the desktop layout', {width: 1920, height: 1080}, false], ['the TV layout', {width: 1920, height: 1080}, true]]) {
+    test(`the word cursor in ${name}, on a real entry`, async ({page}, testInfo) => {
+        test.skip(testInfo.project.use.isMobile, 'A phone has no keys.');
+        await page.setViewportSize(viewport);
+        if (tv) {
+            await useTvLayout(page);
+        }
+
+        await start(page, LINES.plain);
+        await pauseVideo(page);
+        await page.keyboard.press('ArrowRight');
+        await expectCursor(page, '昨日');
+        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('ArrowRight');
+        await expectCursor(page, '学校');
+        await page.screenshot({path: testInfo.outputPath(`cursor, ${name}.png`)});
+        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('ArrowRight');
+        await expectCursor(page, '行きませんでした', '行く');
+        const {scrollHeight, clientHeight} = await popupState(page);
+        expect(scrollHeight).toBeGreaterThan(clientHeight);
+        await page.keyboard.press('ArrowDown');
+        await expect.poll(async () => (await popupState(page)).scrollTop).toBeGreaterThan(0);
+        await page.screenshot({path: testInfo.outputPath(`scrolled, ${name}.png`)});
     });
 }
 

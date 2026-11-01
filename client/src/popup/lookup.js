@@ -39,7 +39,7 @@ export class WordLookup extends EventTarget {
         const close = () => this.close('seek');
         video.addEventListener('seeking', close, {signal});
         video.addEventListener('emptied', close, {signal});
-        const place = () => this._place();
+        const place = () => this.place();
         window.addEventListener('resize', place, {signal});
         document.addEventListener('fullscreenchange', place, {signal});
     }
@@ -113,6 +113,19 @@ export class WordLookup extends EventTarget {
         this._popup?.scrollBy(pixels);
     }
 
+    /** Makes a pause of this class the user's, so that closing leaves the video paused. */
+    keepPaused() {
+        this._hold.forget();
+    }
+
+    /** Puts the popup back next to its word, which has moved. */
+    place() {
+        const anchor = this._current && this._overlay.wordElement(this._current);
+        if (anchor && this.isOpen) {
+            this._popup.place(anchor, this._osd());
+        }
+    }
+
     async _show(text) {
         const ticket = this._ticket + 1;
         this._ticket = ticket;
@@ -164,13 +177,6 @@ export class WordLookup extends EventTarget {
 
         this._popup.show(nodes, this._renderer.dictionaryStyles(dictionaries), anchor, this._osd());
         this._renderer.loadImages(this._popup.root);
-    }
-
-    _place() {
-        const anchor = this._current && this._overlay.wordElement(this._current);
-        if (anchor && this.isOpen) {
-            this._popup.place(anchor, this._osd());
-        }
     }
 
     /**

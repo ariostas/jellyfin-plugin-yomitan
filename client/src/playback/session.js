@@ -5,6 +5,7 @@
 // The order in start() is what keeps failure safe. Jellyfin's subtitles are hidden only once the track's text, the
 // dictionary API and at least one dictionary have all worked, and any later failure puts them back.
 import {NoDictionariesError} from '../engine/engine.js';
+import {KeyInput} from '../input/keys.js';
 import {PointerInput} from '../input/pointer.js';
 import {Layer} from '../layer.js';
 import {Overlay} from '../overlay.js';
@@ -45,6 +46,7 @@ export class PlaybackSession {
         this._layer = null;
         this._overlay = null;
         this._input = null;
+        this._keys = null;
         this._timeline = null;
         this._segmenter = null;
         this._shownKey = null;
@@ -137,6 +139,16 @@ export class PlaybackSession {
             signal,
         });
         this._input = new PointerInput({lookup: this.lookup, overlay: this._overlay, settings: this._settings, signal});
+        this._keys = new KeyInput({
+            lookup: this.lookup,
+            overlay: this._overlay,
+            pointer: this._input,
+            video: this._video,
+            settings: this._settings,
+            cues: () => this.cues,
+            wordsOf: (cueId) => this.words.get(cueId),
+            signal,
+        });
         this._events.on(document, 'SHOW_VIDEO_OSD', this._onOsdToggled);
         this._native.hide();
         this.state = 'active';
@@ -226,6 +238,7 @@ export class PlaybackSession {
         }
 
         this._emit('cuechange', {cues});
+        this._keys.linesChanged();
         this._queueSegmentation(time, cues);
     }
 
@@ -261,6 +274,7 @@ export class PlaybackSession {
                 this._overlay.setWords(shown, words);
                 this._noteLate(shown);
                 this._emit('words', {cue: shown, words});
+                this._keys.linesChanged();
             }
         }
     }
@@ -305,6 +319,7 @@ export class PlaybackSession {
         this.lookup?.destroy(options);
         this.lookup = null;
         this._input = null;
+        this._keys = null;
         this._driving?.abort();
         cancelAnimationFrame(this._animationFrame);
         this._animationFrame = 0;
