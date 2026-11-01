@@ -3,7 +3,7 @@
 import {execFileSync} from 'node:child_process';
 import {expect, test} from '@playwright/test';
 import {clientFor, deleteAll, importArchive, spooledUploads} from '../lib/dictionaries.mjs';
-import {credentials, server} from '../lib/jellyfin.mjs';
+import {credentials, readSettings, saveSettings, server} from '../lib/jellyfin.mjs';
 import {makeDictionary} from '../lib/zip.mjs';
 
 const index = {title: 'Bulky', format: 3, sequenced: true};
@@ -26,7 +26,12 @@ test('a replacement survives the server being killed midway', async () => {
     expect((await importArchive(admin, original)).error).toBeNull();
     const before = await (await admin.list()).json();
 
+    // A save lands during the import, and neither waits for the other or disturbs it.
     const {id} = await (await admin.upload(bulky(150_000), {replace: true})).json();
+    await expect.poll(async () => (await (await admin.job(id)).json()).state).toBe('running');
+    const save = Date.now();
+    await saveSettings(credentials, {fontScale: 133});
+    expect(Date.now() - save).toBeLessThan(1000);
     await expect.poll(async () => (await (await admin.job(id)).json()).progress.rows, {intervals: [20]}).toBeGreaterThan(5000);
     execFileSync('podman', ['kill', '--signal', 'KILL', server.name]);
     execFileSync('podman', ['start', server.name]);
@@ -44,6 +49,7 @@ test('a replacement survives the server being killed midway', async () => {
     expect((await lookup.json()).results[0].rows.length).toBe(1);
     expect(spooledUploads()).toEqual([]);
     expect((await admin.job(id)).status).toBe(404);
+    expect((await readSettings(credentials)).fontScale).toBe(133);
 
     await deleteAll(admin);
 });

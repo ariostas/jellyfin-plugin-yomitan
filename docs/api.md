@@ -1,7 +1,8 @@
-# Dictionary API
+# HTTP API
 
-The HTTP contract between the plugin and its clients. It covers dictionary management and the database that
-Yomitan's `Translator` runs against. The two public scripts, `client.js` and `engine.js`, are in [client.md](client.md). `tests/e2e/contract.spec.mjs` replays every example here against a real server
+The HTTP contract between the plugin and its clients. It covers dictionary management, the database that Yomitan's
+`Translator` runs against, and each user's settings. The public scripts, `client.js`, `engine.js` and `settings-page.js`,
+are in [client.md](client.md). `tests/e2e/contract.spec.mjs` replays every example here against a real server
 and checks the limits, error codes, routes and operations below against the source, so this file cannot drift
 without a test failing. To refresh the example responses after a deliberate change:
 
@@ -35,6 +36,11 @@ cd tests && YOMITAN_UPDATE_API_DOC=1 npx playwright test e2e/contract.spec.mjs
 | `GET /Yomitan/Jobs/{id}` | 401 | Yes | Yes |
 | `POST /Yomitan/Query` | 401 | Yes | Yes |
 | `GET /Yomitan/Media` | 401 | Yes | Yes |
+| `GET /Yomitan/Settings` | 401 | Their own | Their own |
+| `PUT /Yomitan/Settings` | 401 | Their own | Their own |
+
+The dashboard page and its script, `/web/ConfigurationPage?name=yomitan` and `?name=yomitan-admin.js`, are served by
+Jellyfin itself, to anyone: they hold no data, and everything they ask for goes through this API.
 
 ## Limits
 
@@ -110,9 +116,9 @@ Content-Type: application/zip
 HTTP/1.1 202 Accepted
 
 {
-  "id": "41ea813c-c4be-4e30-88bc-c8ce5df4aca7",
+  "id": "7d682cf1-60ff-4c1a-98f5-9722528df138",
   "kind": "import",
-  "state": "running",
+  "state": "queued",
   "title": null,
   "replace": false,
   "phase": null,
@@ -124,8 +130,8 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T15:21:55.1018083+00:00",
-  "startedAt": "2026-10-31T15:21:55.1066917+00:00",
+  "createdAt": "2026-11-01T12:44:10.5968895+00:00",
+  "startedAt": null,
   "finishedAt": null
 }
 ```
@@ -144,7 +150,7 @@ Content-Type: application/zip
 HTTP/1.1 202 Accepted
 
 {
-  "id": "4f2737b3-69f7-4539-8825-4f65f0718567",
+  "id": "18479473-e806-4248-8b97-3e5772743ea8",
   "kind": "import",
   "state": "queued",
   "title": null,
@@ -158,7 +164,7 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T15:21:55.3434249+00:00",
+  "createdAt": "2026-11-01T12:44:10.7800838+00:00",
   "startedAt": null,
   "finishedAt": null
 }
@@ -197,7 +203,7 @@ GET /Yomitan/Jobs/{id}
 HTTP/1.1 200 OK
 
 {
-  "id": "41ea813c-c4be-4e30-88bc-c8ce5df4aca7",
+  "id": "7d682cf1-60ff-4c1a-98f5-9722528df138",
   "kind": "import",
   "state": "succeeded",
   "title": "Example",
@@ -239,9 +245,9 @@ HTTP/1.1 200 OK
     "sizeBytes": 0
   },
   "error": null,
-  "createdAt": "2026-10-31T15:21:55.1018083+00:00",
-  "startedAt": "2026-10-31T15:21:55.1066917+00:00",
-  "finishedAt": "2026-10-31T15:21:55.3221828+00:00"
+  "createdAt": "2026-11-01T12:44:10.5968895+00:00",
+  "startedAt": "2026-11-01T12:44:10.5970279+00:00",
+  "finishedAt": "2026-11-01T12:44:10.6978365+00:00"
 }
 ```
 
@@ -256,7 +262,7 @@ GET /Yomitan/Jobs/{id}
 HTTP/1.1 200 OK
 
 {
-  "id": "4f2737b3-69f7-4539-8825-4f65f0718567",
+  "id": "18479473-e806-4248-8b97-3e5772743ea8",
   "kind": "import",
   "state": "failed",
   "title": "Example",
@@ -273,9 +279,9 @@ HTTP/1.1 200 OK
     "code": "already_exists",
     "message": "A dictionary titled \"Example\" is already installed"
   },
-  "createdAt": "2026-10-31T15:21:55.3434249+00:00",
-  "startedAt": "2026-10-31T15:21:55.3436036+00:00",
-  "finishedAt": "2026-10-31T15:21:55.34686+00:00"
+  "createdAt": "2026-11-01T12:44:10.7800838+00:00",
+  "startedAt": "2026-11-01T12:44:10.7801596+00:00",
+  "finishedAt": "2026-11-01T12:44:10.7833635+00:00"
 }
 ```
 
@@ -303,7 +309,7 @@ HTTP/1.1 200 OK
         "revision": "2026.01",
         "sequenced": true,
         "version": 3,
-        "importDate": 1793460115229,
+        "importDate": 1793537050607,
         "prefixWildcardsSupported": true,
         "counts": {
           "terms": {
@@ -456,7 +462,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 1,
+          "id": 1200156,
           "sequence": 1
         },
         {
@@ -473,7 +479,7 @@ HTTP/1.1 200 OK
           ],
           "score": 0,
           "dictionary": "Example",
-          "id": 2,
+          "id": 1200157,
           "sequence": 2
         }
       ],
@@ -517,7 +523,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 1,
+          "id": 1200156,
           "sequence": 1
         }
       ],
@@ -539,7 +545,7 @@ HTTP/1.1 200 OK
           ],
           "score": 0,
           "dictionary": "Example",
-          "id": 2,
+          "id": 1200157,
           "sequence": 2
         }
       ],
@@ -630,7 +636,7 @@ HTTP/1.1 200 OK
           "revision": "2026.01",
           "sequenced": true,
           "version": 3,
-          "importDate": 1793460115229,
+          "importDate": 1793537050607,
           "prefixWildcardsSupported": true,
           "counts": {
             "terms": {
@@ -728,7 +734,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 1,
+          "id": 1200156,
           "sequence": 1
         }
       ],
@@ -772,7 +778,7 @@ HTTP/1.1 200 OK
           ],
           "score": 100,
           "dictionary": "Example",
-          "id": 1,
+          "id": 1200156,
           "sequence": 1
         }
       ],
@@ -878,7 +884,7 @@ DELETE /Yomitan/Dictionaries?title=Example
 HTTP/1.1 202 Accepted
 
 {
-  "id": "1ef26d6d-58e8-4cc7-bc07-903dfcb330b7",
+  "id": "a84f26fc-0788-4e75-bb14-419df4db9275",
   "kind": "delete",
   "state": "queued",
   "title": "Example",
@@ -892,9 +898,140 @@ HTTP/1.1 202 Accepted
   },
   "result": null,
   "error": null,
-  "createdAt": "2026-10-31T15:21:55.7048593+00:00",
+  "createdAt": "2026-11-01T12:44:10.9957556+00:00",
   "startedAt": null,
   "finishedAt": null
+}
+```
+
+## Settings
+
+Each user's settings for the client, in a small database of their own, so that saving one never waits for an import. They
+live in `yomitan/settings.db` in Jellyfin's data directory.
+
+**Whose settings these are comes from the token and nothing else.** Neither request takes a user id in any form, so
+nobody can name another user, and an admin cannot either. An API key belongs to no user, and gets 400 `no_user`.
+
+| Setting | Type | Default | Allowed |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `false` | |
+| `hoverDelayMs` | integer | 200 | 0 to 5000 |
+| `hoverGraceMs` | integer | 300 | 0 to 5000 |
+| `upOnlyEntry` | boolean | `false` | |
+| `fontScale` | integer | 100 | 50 to 300, in percent |
+| `dictionaryOrder` | array of titles | `[]` | At most 256, each 1 to 4096 characters, no duplicates |
+| `disabledDictionaries` | array of titles | `[]` | The same |
+
+[client.md](client.md#settings) says what each one does. A title in a list does not have to be installed, since another
+admin can delete a dictionary while someone's page is open. One that is not installed means nothing.
+
+`MaxRequestBytes` for this API is 1048576, and past that the answer is 413 `limit_exceeded`.
+
+### `GET /Yomitan/Settings`
+
+Responds `200` with every setting and the `revision`. A user who has saved nothing has the defaults at revision 0, so the
+feature starts off. It is never cached.
+
+<!-- example -->
+```http request
+GET /Yomitan/Settings
+```
+
+```http response
+HTTP/1.1 200 OK
+Cache-Control: no-store
+
+{
+  "revision": 0,
+  "settings": {
+    "enabled": false,
+    "hoverDelayMs": 200,
+    "hoverGraceMs": 300,
+    "upOnlyEntry": false,
+    "fontScale": 100,
+    "dictionaryOrder": [],
+    "disabledDictionaries": []
+  }
+}
+```
+
+### `PUT /Yomitan/Settings`
+
+Saves the settings the body names, and **leaves the others as they are**, in one transaction. So two devices that each
+change a different setting both keep their change. The same setting changed twice keeps the last. Everything is checked
+first: one bad value, or one name that is not on the list, refuses the whole request and saves nothing. Names are
+case-sensitive, and a name twice is refused.
+
+Responds `200` with every setting as saved. `revision` goes up by one with every save that names anything, so a client
+can tell which of two answers is newer. An empty object saves nothing, and is the same as a `GET`.
+
+<!-- example -->
+```http request
+PUT /Yomitan/Settings
+Content-Type: application/json
+
+{"enabled": true, "fontScale": 120, "disabledDictionaries": ["JMnedict"]}
+```
+
+```http response
+HTTP/1.1 200 OK
+Cache-Control: no-store
+
+{
+  "revision": 1,
+  "settings": {
+    "enabled": true,
+    "hoverDelayMs": 200,
+    "hoverGraceMs": 300,
+    "upOnlyEntry": false,
+    "fontScale": 120,
+    "dictionaryOrder": [],
+    "disabledDictionaries": [
+      "JMnedict"
+    ]
+  }
+}
+```
+
+A value out of bounds:
+
+<!-- example -->
+```http request
+PUT /Yomitan/Settings
+Content-Type: application/json
+
+{"fontScale": 1000}
+```
+
+```http response
+HTTP/1.1 400 Bad Request
+
+{
+  "error": {
+    "code": "invalid_setting",
+    "message": "fontScale must be a whole number from 50 to 300"
+  }
+}
+```
+
+A name that is not a setting:
+
+<!-- example -->
+```http request
+PUT /Yomitan/Settings
+Content-Type: application/json
+
+{"userId": "someone else"}
+```
+
+```http response
+HTTP/1.1 400 Bad Request
+
+{
+  "error": {
+    "code": "unknown_setting",
+    "message": "There is no setting called \"userId\""
+  }
 }
 ```
 
@@ -913,14 +1050,17 @@ HTTP/1.1 202 Accepted
 | `invalid_json` | 400 | The query body is not JSON |
 | `invalid_media` | Job | A glossary's image is missing, of an unknown type, or cannot be read |
 | `invalid_request` | 400 | The request has the wrong shape |
+| `invalid_setting` | 400 | A setting's value has the wrong type or is out of bounds. See [Settings](#settings) |
 | `limit_exceeded` | 413, Job | Over one of the [limits](#limits) |
 | `missing_index` | Job | No `index.json` at the archive's root |
+| `no_user` | 400 | The token belongs to no user, as an API key does, so it has no settings |
 | `not_found` | 404, Job | No such dictionary, job or image |
 | `queue_full` | 429 | Too many jobs are pending |
 | `too_many_dictionaries` | 400 | See [limits](#limits) |
 | `too_many_items` | 400 | See [limits](#limits) |
 | `too_many_operations` | 400 | See [limits](#limits) |
 | `unknown_operation` | 400 | No such `op` |
+| `unknown_setting` | 400 | No setting has that name |
 | `unsafe_path` | 400, Job | A zip entry, a glossary image or a media request used an unsafe path |
 | `upload_failed` | 400 | The upload did not finish |
 

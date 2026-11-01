@@ -79,17 +79,101 @@ export async function getEpisodes() {
     return items.map((item) => item.Id);
 }
 
-/** Opens jellyfin-web and logs in through the form. */
-export async function logIn(page) {
-    await page.goto('web/');
+/** What a user who has saved nothing has. tests/e2e/settings-api.spec.mjs checks this against the server. */
+export const defaultSettings = {
+    enabled: false,
+    hoverDelayMs: 200,
+    hoverGraceMs: 300,
+    upOnlyEntry: false,
+    fontScale: 100,
+    dictionaryOrder: [],
+    disabledDictionaries: [],
+};
+
+/**
+ * Makes a real account, with no admin rights and the default access to every library.
+ * @param {string} name
+ * @returns {Promise<{id: string, username: string, password: string}>}
+ */
+export async function createUser(name) {
+    const username = `${name}-${Date.now().toString(36)}`;
+    const password = `${name}-password`;
+    const {Id: id} = await api('/Users/New', {method: 'POST', body: {Name: username, Password: password}});
+    return {id, username, password};
+}
+
+export function deleteUser({id}) {
+    return api(`/Users/${id}`, {method: 'DELETE'});
+}
+
+/** Signs a user out from the page itself, as the app does, and waits for the login page. */
+export async function signOut(page) {
+    await page.evaluate(() => window.Dashboard.logout());
+    await page.locator('#txtManualName, .btnManual').first().waitFor();
+}
+
+/** Fills in the login form, and waits for the home page. */
+export async function fillLogin(page, {username, password}) {
     await page.locator('#txtManualName, .btnManual').first().waitFor();
     if (await page.locator('.btnManual').isVisible()) {
         await page.locator('.btnManual').click();
     }
-    await page.locator('#txtManualName').fill(credentials.username);
-    await page.locator('#txtManualPassword').fill(credentials.password);
+    await page.locator('#txtManualName').fill(username);
+    await page.locator('#txtManualPassword').fill(password);
     await page.locator('.manualLoginForm .button-submit').click();
     await page.waitForURL(/#\/home/);
+}
+
+/**
+ * Opens jellyfin-web and logs in through the form, as the admin unless told otherwise. The feature is off by default, so
+ * this first sets the user's real settings on the server: on, and everything else at its default, so that nothing a test
+ * saved reaches the next one. Pass `settings: null` to leave them alone, as for a user who is new.
+ * @param {import('@playwright/test').Page} page
+ * @param {object} [options]
+ * @param {{username: string, password: string}} [options.user]
+ * @param {object|null} [options.settings] Saved on top of the defaults.
+ */
+export async function logIn(page, {user = credentials, settings = {enabled: true}} = {}) {
+    if (settings) {
+        await saveSettings(user, {...defaultSettings, ...settings});
+    }
+
+    await page.goto('web/');
+    await fillLogin(page, user);
+}
+
+const settingsTokens = new Map();
+
+/** Signs a user in once. A second login on one device id would end the first one's token. */
+async function settingsToken({username, password}) {
+    if (!settingsTokens.has(username)) {
+        const response = await fetch(`${server.url}/Users/AuthenticateByName`, {
+            method: 'POST',
+            headers: {Authorization: `MediaBrowser Client="yomitan-tests", Device="tests", DeviceId="yomitan-settings-${username}", Version="1"`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({Username: username, Pw: password}),
+        });
+        expect(response.ok).toBe(true);
+        settingsTokens.set(username, (await response.json()).AccessToken);
+    }
+
+    return settingsTokens.get(username);
+}
+
+/** Saves a user's settings through the API, under their own token, as a client does. */
+export async function saveSettings(user, settings) {
+    const saved = await fetch(`${server.url}/Yomitan/Settings`, {
+        method: 'PUT',
+        headers: {Authorization: `${authHeader}, Token="${await settingsToken(user)}"`, 'Content-Type': 'application/json'},
+        body: JSON.stringify(settings),
+    });
+    expect(saved.status).toBe(200);
+}
+
+/** Reads a user's settings through the API, under their own token. */
+export async function readSettings(user) {
+    const response = await fetch(`${server.url}/Yomitan/Settings`, {headers: {Authorization: `${authHeader}, Token="${await settingsToken(user)}"`}});
+    expect(response.status).toBe(200);
+    return (await response.json()).settings;
 }
 
 /**

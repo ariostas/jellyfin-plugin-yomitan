@@ -21,6 +21,7 @@
   <ItemGroup>
     <Compile Include="../../src/Jellyfin.Plugin.Yomitan/Injection/IndexInjectionMiddleware.cs" Link="IndexInjectionMiddleware.cs" />
     <Compile Include="../../src/Jellyfin.Plugin.Yomitan/Dictionaries/*.cs" Link="Dictionaries/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Jellyfin.Plugin.Yomitan/Settings/*.cs" Link="Settings/%(Filename)%(Extension)" />
     <EmbeddedResource Include="../../third_party/yomitan/ext/data/schemas/dictionary-*-schema.json" LogicalName="Jellyfin.Plugin.Yomitan.schemas.%(Filename)%(Extension)" />
   </ItemGroup>
 

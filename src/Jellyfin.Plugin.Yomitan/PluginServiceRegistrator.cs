@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.Yomitan.Dictionaries;
 using Jellyfin.Plugin.Yomitan.Injection;
+using Jellyfin.Plugin.Yomitan.Settings;
 using Jellyfin.Plugin.Yomitan.Web;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
@@ -21,6 +22,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
 
         serviceCollection.AddSingleton(services =>
             new DictionaryStore(Path.Combine(services.GetRequiredService<IApplicationPaths>().DataPath, "yomitan")));
+        serviceCollection.AddSingleton(services =>
+            new SettingsStore(Path.Combine(services.GetRequiredService<IApplicationPaths>().DataPath, "yomitan")));
         serviceCollection.AddSingleton<DictionaryQuery>();
         serviceCollection.AddSingleton<JobQueue>();
         serviceCollection.AddSingleton<Func<ImportLimits>>(() => Plugin.Instance?.Configuration.ToLimits() ?? new ImportLimits());
