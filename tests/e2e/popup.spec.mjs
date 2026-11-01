@@ -391,8 +391,12 @@ test.describe('where it goes', () => {
         const {TypesetSample: item} = await getMovies();
         await play(page, item, {subtitleStreamIndex: 2, minimumTime: 1});
         await expectTrack(page, {state: 'active', language: 'jpn', codec: 'ass'});
+        await page.evaluate(() => document.querySelector('video.htmlvideoplayer').pause());
         await setVideoTime(page, 14);
-        await page.waitForFunction(() => document.querySelector('.yomitan-signs .yomitan-word'));
+        await page.waitForFunction(() => {
+            const video = document.querySelector('video.htmlvideoplayer');
+            return !video.seeking && Math.abs(video.currentTime - 14) < 0.5 && document.querySelector('.yomitan-signs .yomitan-word');
+        });
         await page.evaluate(() => {
             const session = window.__yomitanJellyfin.playback.session;
             const cue = session.cues.find(({kind}) => kind === 'sign');
@@ -411,8 +415,13 @@ test.describe('where it goes', () => {
         await play(page, item, {subtitleStreamIndex: 2, minimumTime: 1});
         await expectTrack(page, {state: 'active', language: 'jpn', codec: 'ass'});
         await waitForOsdHidden(page);
+        await page.evaluate(() => document.querySelector('video.htmlvideoplayer').pause());
         await setVideoTime(page, 14);
-        await page.waitForFunction(() => document.querySelector('.yomitan-signs .yomitan-word') && document.querySelector('.yomitan-lines .yomitan-word'));
+        await page.waitForFunction(() => {
+            const video = document.querySelector('video.htmlvideoplayer');
+            return !video.seeking && Math.abs(video.currentTime - 14) < 0.5
+                && document.querySelector('.yomitan-signs .yomitan-word') && document.querySelector('.yomitan-lines .yomitan-word');
+        });
         await openWord(page, '看板');
         await expectPopup(page, '看板');
         const sign = await page.evaluate(() => {

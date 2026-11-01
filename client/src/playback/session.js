@@ -220,6 +220,11 @@ export class PlaybackSession {
         }
 
         this._overlay.show(cues, (cue) => this.words.get(cue.id));
+        // A seek under way, or an offset changed while paused, can take the line away from a word that is showing.
+        if (this.lookup.current && !cues.some(({id}) => id === this.lookup.current.cueId)) {
+            this.lookup.close('gone');
+        }
+
         this._emit('cuechange', {cues});
         this._queueSegmentation(time, cues);
     }

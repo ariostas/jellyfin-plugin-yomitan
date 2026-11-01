@@ -250,7 +250,7 @@ so the server stays in step. It only resumes what it paused.
 
 - A video the user paused stays paused, whatever the popup does.
 - A `play` event it did not cause means someone pressed play. The popup closes, and the hold is forgotten.
-- A seek closes the popup, and resumes if the plugin paused.
+- A seek closes the popup, and resumes if the plugin paused. So does anything else that takes the line off the screen.
 - Ending with the track or the session also resumes. Only a stopped playback does not: there is no video left.
 
 **A word looked up pauses first, and shows after.** `known` says a dictionary has it, so a miss is not a real risk, and a
@@ -357,7 +357,7 @@ is not the plugin's, and `close()` leaves it paused, which is what Back wants th
 | `left`, `tapped` | The mouse left, or a tap landed elsewhere |
 | `play` | Someone pressed play. The video is already playing |
 | `seek` | A seek, or the video was reloaded |
-| `miss`, `error`, `gone` | Nothing was found, the lookup failed, or the line went |
+| `miss`, `error`, `gone` | Nothing was found, the lookup failed, or the line went, as a seek under way or a new subtitle offset can do |
 | `ended`, `stopped` | The session ended, with the video going on, or with it gone |
 
 Moving the cursor over a word marks it through `lookup`, and `Overlay.setActiveWord` is the highlight on its own.

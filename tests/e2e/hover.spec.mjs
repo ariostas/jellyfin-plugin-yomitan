@@ -7,7 +7,7 @@ import {
     playStateCounts, popupState, serverPaused, showLine, startLookupFilm, videoState, waitForOsdHidden, wordCentre,
 } from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {setSubtitleTrack, stopPlayback} from '../lib/player.mjs';
+import {setSubtitleOffset, setSubtitleTrack, stopPlayback} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
@@ -421,6 +421,17 @@ test.describe('closing', () => {
         await expect.poll(() => isPaused(page), {timeout: 10_000}).toBe(false);
         expect((await popupState(page)).open).toBe(false);
         expect(await activeWord(page)).toBeNull();
+    });
+
+    test('the line going while it is open closes it', async ({page}) => {
+        await start(page);
+        await moveToWord(page, '学校');
+        await expectPopup(page, '学校');
+        // No seek, and the video is paused: this is the file's time moving, and it takes the line away.
+        await setSubtitleOffset(page, 12);
+        await expectNoPopup(page);
+        expect(await activeWord(page)).toBeNull();
+        await expect.poll(() => isPaused(page)).toBe(false);
     });
 
     test('an inactive event closes it', async ({page}) => {
