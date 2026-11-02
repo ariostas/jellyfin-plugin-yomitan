@@ -39,8 +39,10 @@ export default defineConfig({
         {
             name: 'webkit',
             testMatch: everyBrowser,
-            // Headless WPE sometimes dies between tests, before a test has started. A retry shows up as flaky in the results.
-            retries: 1,
+            // Headless WPE sometimes dies between tests, or while opening a tab, with or without the plugin: about one
+            // launch in ten. With one retry, a matrix run of hundreds of tests still lost both attempts of one now and
+            // then. A retry shows up as flaky in the results.
+            retries: 2,
             use: {...devices['Desktop Safari']},
         },
         {
