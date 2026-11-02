@@ -45,7 +45,7 @@ const message = (page) => page.locator('#yomitanMessage');
 const rows = (page) => page.locator('.yomitan-dictionary');
 const installed = async () => (await (await admin.list()).json()).dictionaries.map(({title}) => title);
 
-test('an admin finds it in the dashboard\'s menu, under any BaseUrl', async ({page, isMobile}) => {
+test('an admin finds it in the dashboard\'s menu, under any BaseUrl', {tag: '@smoke'}, async ({page, isMobile}) => {
     test.skip(isMobile, 'On a phone that menu is in a drawer. The next test opens the page there.');
     await logIn(page);
     await page.goto('web/#/dashboard');
@@ -56,7 +56,7 @@ test('an admin finds it in the dashboard\'s menu, under any BaseUrl', async ({pa
     expect(page.url()).toContain('#/configurationpage?name=yomitan');
 });
 
-test('a file goes up, shows its progress, and joins the list with its numbers', async ({page}) => {
+test('a file goes up, shows its progress, and joins the list with its numbers', {tag: '@smoke'}, async ({page}) => {
     await openPage(page);
     await expect(page.locator('#yomitanList')).toContainText('Nothing is installed');
     await expect(page.locator('#yomitanUpload')).toBeDisabled();

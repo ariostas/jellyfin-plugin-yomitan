@@ -106,6 +106,10 @@ for (const plugin of plugins.filter((candidate) => candidate.CanUninstall)) {
     console.log(`Plugin ${plugin.Name} ${plugin.Version}: ${plugin.Status}`);
 }
 const yomitan = plugins.find((plugin) => plugin.Name === 'Yomitan');
-if (yomitan?.Status !== 'Active') {
+if (process.env.JF_INSTALL === '0') {
+    if (yomitan) {
+        throw new Error(`The server should not have the Yomitan plugin: ${JSON.stringify(yomitan)}`);
+    }
+} else if (yomitan?.Status !== 'Active') {
     throw new Error(`The Yomitan plugin is not active: ${JSON.stringify(yomitan)}`);
 }

@@ -8,7 +8,7 @@ function tags(html) {
 }
 
 for (const path of ['/web/', '/web/index.html']) {
-    test(`GET ${path} has one tag, correctly placed and pointing at the script`, async () => {
+    test(`GET ${path} has one tag, correctly placed and pointing at the script`, {tag: '@smoke'}, async () => {
         const {status, headers, text} = await rawRequest(path);
         expect(status).toBe(200);
         expect(headers['content-type']).toContain('text/html');
@@ -152,12 +152,12 @@ test.describe('engine.js', () => {
         expect(revalidated.status).toBe(304);
     });
 
-    test('anonymous access stops at the scripts', async () => {
+    test('anonymous access stops at the scripts', {tag: '@smoke'}, async () => {
         const query = await rawRequest('/Yomitan/Query', {method: 'POST'});
         expect(query.status).toBe(401);
     });
 
-    test('compression reaches it, and the loader stays small', async () => {
+    test('compression reaches it, and the loader stays small', {tag: '@smoke'}, async () => {
         const {body, headers} = await rawRequest('/Yomitan/engine.js', {headers: {'Accept-Encoding': 'br'}});
         expect(headers['content-encoding']).toBe('br');
         // 107 KB as of Phase 4, which added Yomitan's display code, templates and CSS. Only a video ever loads this.

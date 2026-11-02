@@ -364,7 +364,7 @@ test.describe('two users on one browser', () => {
     });
 });
 
-test('the exit check of PLAN.md: a non-admin changes a setting in one browser, and the other shows it in playback', async ({browser, browserName}) => {
+test('the exit check of PLAN.md: a non-admin changes a setting in one browser, and the other shows it in playback', {tag: '@smoke'}, async ({browser, browserName}) => {
     test.skip(browserName !== 'chromium', 'Two contexts say the same in every browser.');
     const open = async () => {
         const context = await browser.newContext({baseURL: `${server.url}/`, viewport: {width: 1280, height: 720}});

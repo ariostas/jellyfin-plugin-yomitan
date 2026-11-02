@@ -14,6 +14,7 @@
 #   JF_FT_ORDER      where File Transformation's middleware sits relative to ours: outer (default, what
 #                    the real plugin names give) or inner. The server orders plugins by manifest name.
 #   JF_EXTRA_MEDIA   a directory of real media, as a third library. See tests/e2e/real-film.spec.mjs (default none)
+#   JF_INSTALL       0 starts the server without the plugin, to install it from a repository (default 1)
 #   JF_IMAGE         server image
 set -euo pipefail
 
@@ -43,7 +44,9 @@ install_plugins() {
 
     mkdir -p "$plugins"
     find "$plugins" -mindepth 1 -maxdepth 1 -type d ! -name configurations -exec rm -rf {} +
-    cp -r "$root/out/plugin" "$plugins/Yomitan_$version"
+    if [[ ${JF_INSTALL:-1} == 1 ]]; then
+        cp -r "$root/out/plugin" "$plugins/Yomitan_$version"
+    fi
 
     if [[ ${JF_WITH_FT:-0} == 1 ]]; then
         "$root/scripts/build-file-transformation.sh"

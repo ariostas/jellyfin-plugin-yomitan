@@ -37,7 +37,7 @@ async function startJapanese(page, {minimumTime = 1} = {}) {
 }
 
 test.describe('loading', () => {
-    test('the engine stays away until a video starts', async ({page}) => {
+    test('the engine stays away until a video starts', {tag: '@smoke'}, async ({page}) => {
         const engineRequests = [];
         page.on('request', (request) => {
             if (request.url().includes('/Yomitan/engine.js')) {
@@ -136,7 +136,7 @@ test.describe('in sync', () => {
 });
 
 test.describe('the overlay', () => {
-    test('it replaces the native line: the track is hidden and keeps its cues', async ({page, browserName}) => {
+    test('it replaces the native line: the track is hidden and keeps its cues', {tag: '@smoke'}, async ({page, browserName}) => {
         test.skip(browserName !== 'chromium', 'jellyfin-web only uses native cues in Chromium. See native-subtitles.spec.mjs.');
         await logIn(page);
         await startJapanese(page);

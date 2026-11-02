@@ -44,7 +44,7 @@ async function start(page, line = LINES.plain) {
 }
 
 test.describe('hovering a word', () => {
-    test('pauses a playing video, shows the popup and marks the word, and the server sees the pause', async ({page}) => {
+    test('pauses a playing video, shows the popup and marks the word, and the server sees the pause', {tag: '@smoke'}, async ({page}) => {
         const sessionId = await start(page);
         await moveToWord(page, '学校');
         await expectPopup(page, '学校');

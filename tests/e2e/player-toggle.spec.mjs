@@ -58,7 +58,7 @@ const startOff = async (page) => {
     await page.locator(BUTTON).waitFor({state: 'attached'});
 };
 
-test('it turns the feature on and off at once, without touching the video, and it stays', async ({page, isMobile}) => {
+test('it turns the feature on and off at once, without touching the video, and it stays', {tag: '@smoke'}, async ({page, isMobile}) => {
     await startOff(page);
     await page.evaluate(() => {
         window.theVideo = document.querySelector('video.htmlvideoplayer');

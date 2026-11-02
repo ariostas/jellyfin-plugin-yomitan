@@ -84,7 +84,7 @@ for (const {name, tv, use} of LAYOUTS) {
         test.use(use);
         test.skip(({isMobile}) => tv && isMobile, TV_ON_A_PHONE);
 
-        test('the whole flow: in, along, scroll, out, in again, resume', async ({page}) => {
+        test('the whole flow: in, along, scroll, out, in again, resume', {tag: tv ? [] : '@smoke'}, async ({page}) => {
             const sessionId = await start(page, {tv, line: LINES.coffee});
             await countPlayState(page);
             await pauseWithKey(page, tv);

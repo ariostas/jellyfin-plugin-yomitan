@@ -1,7 +1,7 @@
 import {clientScript, getMovies, logIn, play, server} from '../lib/jellyfin.mjs';
 import {expect, test} from '../lib/test.mjs';
 
-test('the client script runs in jellyfin-web and stays single across reloads', async ({page}) => {
+test('the client script runs in jellyfin-web and stays single across reloads', {tag: '@smoke'}, async ({page}) => {
     const scriptResponses = [];
     const errors = [];
     page.on('response', (response) => {
@@ -37,7 +37,7 @@ test('the client is present before login, on the login page', async ({page}) => 
     expect(await page.evaluate(() => window.ApiClient.isLoggedIn())).toBe(false);
 });
 
-test('a movie plays with the client loaded', async ({page}) => {
+test('a movie plays with the client loaded', {tag: '@smoke'}, async ({page}) => {
     await logIn(page);
     const movies = await getMovies();
     expect(Object.keys(movies).sort()).toEqual(['AssSample', 'ImageSample', 'LookupSample', 'SrtSample', 'TracksSample', 'TranscodeSample', 'TypesetSample']);
