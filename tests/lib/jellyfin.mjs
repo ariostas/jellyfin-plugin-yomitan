@@ -122,6 +122,12 @@ export async function fillLogin(page, {username, password}) {
     await page.locator('#txtManualPassword').fill(password);
     await page.locator('.manualLoginForm .button-submit').click();
     await page.waitForURL(/#\/home/);
+    // Leaving home calls pause() on each of its item rows, and jellyfin-web throws if a row has not been set up yet. The
+    // login page keeps a row of its own that never is, so only home's count.
+    await page.waitForFunction(() => {
+        const rows = [...document.querySelectorAll('#indexPage .itemsContainer')];
+        return rows.length > 0 && rows.every((row) => typeof row.pause === 'function');
+    });
 }
 
 /**
