@@ -11,6 +11,29 @@ desktop browsers, mobile browsers and the Android app in web player mode.
 the app is native Kotlin with no web view, so a plugin cannot touch it. That is accepted, with no workaround
 planned. Samsung and LG TVs are not targets, so there is no real-TV testing phase.
 
+## Status
+
+All seven phases are done. The plugin is packaged, but not yet published: the GitHub repository does not exist yet, so
+CI and the release workflow have only run here, by hand.
+
+| Phase | Result |
+| --- | --- |
+| 1. Skeleton and injection | Done. [Injection](docs/client.md#the-scripts), tested with a `BaseUrl` and File Transformation |
+| 2. Dictionary backend | Done. [docs/api.md](docs/api.md), with parity against Yomitan's own database |
+| 3. Engine and subtitles | Done, with a different segmenter. See decision 5 and [Segmentation](docs/client.md#segmentation) |
+| 4. Desktop and mobile | Done. See [Phase 4 result](#phase-4-desktop-and-mobile-interaction) |
+| 5. Keyboard and remote | Done. See [Phase 5 result](#phase-5-keyboard-and-remote-navigation) |
+| 6. Settings | Done. See [Phase 6 result](#phase-6-settings) |
+| 7. Packaging | Done. See [Phase 7 result](#phase-7-packaging) |
+
+Still open, and left for people with the devices or the accounts:
+
+- The checks on a real phone, in the Android app and on a real TV, which [README.md](README.md) lists.
+- Safari itself, as opposed to Playwright's WebKit.
+- Lookup times on real hardware and a mobile network. The numbers below are from localhost.
+- webOS, which loads the server's jellyfin-web and so may work, untried. Tizen needs a rebuilt app.
+- The first push to GitHub, after which CI, the scheduled run and the release workflow run for real for the first time.
+
 ## What was tested
 
 Spike run on Jellyfin **12.4.0** (podman) with headless Chromium 156 driven by Playwright. It used a real
@@ -252,6 +275,32 @@ See [docs/client.md](docs/client.md#settings).
   server. Failures here are the early warning.
 - README listing client support honestly, including the Android player setting.
 
+**Phase 7 result:** done, except what needs the GitHub repository to exist. What changed from the list above:
+
+- **One build, for 12.0 and later**, not one per ABI. Jellyfin's 12 series, 12.0 to 12.4, came out between September and
+  October 2026, and a plugin compiled against 12.0 runs on all of them, as Jellyfin's own plugins do: most of the
+  official repository targets 12.0.0.0. 10.11 (net9.0) is not built: it has had no release since 12.0, and a build that
+  cannot be tested here would not ship. On 12.0 the smoke set and every playback spec pass, and the smoke set on 12.1 to
+  12.3. The one catch: `Microsoft.Data.Sqlite`'s assembly version is its package version, so it has to stay on what 12.0
+  ships, 10.0.11, or the first query fails there.
+- **The manifest is `manifest.json` on main**, read through `raw.githubusercontent.com`, in the format of
+  `MediaBrowser.Model.Updates.PackageInfo`, with the MD5 of the zip, which is what `InstallationManager` checks.
+  `scripts/lib/manifest.mjs` writes it, and refuses to lose or change a version it had. The release workflow adds each
+  version after the GitHub release is out, so the manifest never points at a missing file.
+- **The install through the catalogue is a test**, `tests/e2e/catalogue.spec.mjs`: a server without the plugin, a
+  repository added in the dashboard, the install, a restart from the dashboard, and an upgrade to a second build that keeps
+  the dictionaries and the settings. Each release runs it as an upgrade from the newest version in the manifest.
+- **The zip is exactly what the server needs**: the DLL, with its debug symbols inside, `meta.json`, the license and
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The same commit gives the same zip, byte for byte.
+- **A smoke set of 14 tests**, tagged `@smoke`, runs on every push in about two minutes: injection, the engine loading, the
+  overlay, a popup by real mouse, the whole key flow, the button in the player, the dashboard page with an upload, and the
+  settings changed on one device and seen in playback on another.
+- **The variant servers run only what depends on them.** BaseUrl reruns the specs whose requests are built from it, and
+  File Transformation the ones that read `index.html`. `scripts/test-matrix.sh` names them and says why.
+- **Found on the way:** jellyfin-web keeps a track's cues when another is chosen while the first is still downloading, so
+  its native track then holds both, with the plugin off too. A person cannot choose that fast. The tests' `play()` waits
+  for the first download now, since the smoke set, which plays a file fresh, met it.
+
 ## Not in scope for v1
 
 - Android TV, Samsung Tizen and LG webOS TVs.
@@ -267,7 +316,7 @@ See [docs/client.md](docs/client.md#settings).
 | --- | --- | --- |
 | jellyfin-web changes its DOM | Breakage on upgrade | Few selectors, scheduled CI |
 | Lookups feel slow on a phone | Poor mobile experience | Batch and cache in Phase 3 |
-| Plugin ABI is strict per Jellyfin version | Plugin unavailable after upgrades | Build matrix, fast releases |
+| Plugin ABI is strict per Jellyfin version | Plugin unavailable after upgrades | Built against the oldest supported, weekly CI on the newest, fast releases |
 | Dictionary storage on small servers | Hundreds of MB per dictionary set | Show size in settings, and document it |
 
 ## Prior art
