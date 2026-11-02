@@ -187,6 +187,25 @@ export async function readSettings(user) {
  * the UI would tie every test to the layout, and playbackManager is not reachable from the page.
  */
 export async function play(page, itemId, {minimumTime = 3, subtitleStreamIndex} = {}) {
+    // jellyfin-web keeps the cues of a track that is still downloading when another is chosen, so its native track then
+    // holds both, with the plugin off too. A person cannot choose that fast, so the choice below waits for the first
+    // track to land. Only jellyfin-web's own downloads have two numbers after Subtitles/.
+    const downloads = new Set();
+    const onRequest = (request) => /\/Subtitles\/\d+\/\d+\/Stream\.js/.test(request.url()) && downloads.add(request);
+    const onDone = (request) => downloads.delete(request);
+    page.on('request', onRequest);
+    page.on('requestfinished', onDone);
+    page.on('requestfailed', onDone);
+    try {
+        return await playWith(page, itemId, {minimumTime, subtitleStreamIndex, downloads});
+    } finally {
+        page.off('request', onRequest);
+        page.off('requestfinished', onDone);
+        page.off('requestfailed', onDone);
+    }
+}
+
+async function playWith(page, itemId, {minimumTime, subtitleStreamIndex, downloads}) {
     const deviceId = await page.evaluate(() => window.ApiClient.deviceId());
     let session;
     await expect.poll(async () => {
@@ -202,6 +221,12 @@ export async function play(page, itemId, {minimumTime = 3, subtitleStreamIndex} 
 
     // jellyfin-web ignores a subtitle index in the play command, so choose the track the way a remote control does.
     if (subtitleStreamIndex !== undefined) {
+        // Its cues go in just after the download, so the quiet has to last a moment.
+        await expect.poll(async () => {
+            const quiet = downloads.size === 0;
+            await page.waitForTimeout(300);
+            return quiet && downloads.size === 0;
+        }).toBe(true);
         await api(`/Sessions/${session.Id}/Command`, {
             method: 'POST',
             body: {Name: 'SetSubtitleStreamIndex', Arguments: {Index: `${subtitleStreamIndex}`}},
