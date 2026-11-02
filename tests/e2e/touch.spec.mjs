@@ -136,7 +136,11 @@ test('a tap on a word no dictionary has is jellyfin-web\'s too', async ({page}) 
 
 test('a closing tap on an OSD control only closes the popup', async ({page}) => {
     await start(page);
-    await tapNowhere(page);
+    // A tap toggles the OSD, which can still be up from the start of the film.
+    if (!await osdShowing(page)) {
+        await tapNowhere(page);
+    }
+
     await expect.poll(() => osdShowing(page)).toBe(true);
     await page.waitForTimeout(300);
     await tapWord(page, '学校');

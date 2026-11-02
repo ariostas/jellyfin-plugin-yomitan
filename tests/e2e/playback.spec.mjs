@@ -825,8 +825,7 @@ test.describe('what Phases 4 and 5 use', () => {
         const result = await page.evaluate(() => new Promise((resolve) => {
             const {playback} = window.__yomitanJellyfin;
             const seen = [];
-            playback.addEventListener('cuechange', ({detail}) => seen.push(detail.cues.length));
-            playback.addEventListener('words', async ({detail: {cue, words}}) => {
+            const use = async (cue, words) => {
                 const word = words.find(({text}) => text.length > 1 && text !== 'です');
                 const {dictionaryEntries, originalTextLength, truncated} = await playback.engine.lookup(word.text);
                 resolve({
@@ -839,6 +838,17 @@ test.describe('what Phases 4 and 5 use', () => {
                     stored: playback.session.words.get(cue.id) === words,
                     time: playback.session.time,
                 });
+            };
+
+            playback.addEventListener('words', ({detail: {cue, words}}) => use(cue, words));
+            // On a slow machine the line can end first, and the next was split ahead of time, so it has no event.
+            playback.addEventListener('cuechange', ({detail}) => {
+                seen.push(detail.cues.length);
+                const [cue] = detail.cues;
+                const words = cue && playback.session.words.get(cue.id);
+                if (words && playback.session.time > 45) {
+                    use(cue, words);
+                }
             });
 
             // A line far ahead, so its words are not ready yet.

@@ -77,6 +77,9 @@ test('turning one off changes the line and the popup while the video plays', asy
     test.skip(isMobile, 'The mouse is the short way.');
     await start(page);
     const before = await generation(page);
+    await setDictionaries(page, 'disabledDictionaries', ['Mini']);
+
+    // From here on. A request for the next line can already be on its way as the setting changes.
     const bodies = [];
     page.on('request', (request) => {
         if (request.url().endsWith('/Yomitan/Query')) {
@@ -84,7 +87,6 @@ test('turning one off changes the line and the popup while the video plays', asy
         }
     });
 
-    await setDictionaries(page, 'disabledDictionaries', ['Mini']);
     await expect.poll(() => known(page)).toEqual(['昨日', '学校']);
     expect(await generation(page)).toBeGreaterThan(before);
     expect(await titlesInUse(page)).toEqual(['Beta', 'KanjiOnly']);

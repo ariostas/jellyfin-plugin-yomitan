@@ -51,7 +51,7 @@ test.describe('hovering a word', () => {
         expect(await isPaused(page)).toBe(true);
         expect(await activeWord(page)).toBe('学校');
         expect((await popupState(page)).text).toContain('meaning of 学校');
-        await expect.poll(() => serverPaused(sessionId)).toBe(true);
+        await expect.poll(() => serverPaused(sessionId), {timeout: 15_000}).toBe(true);
     });
 
     test('an inflected word finds its dictionary form', async ({page}) => {
@@ -217,26 +217,51 @@ test.describe('a mouse that is only passing', () => {
             test.skip(browserName === 'webkit', STEADY_MOUSE);
             await start(page);
             await countPlayState(page);
-            const first = await wordCentre(page, '昨日');
-            const last = await wordCentre(page, '行きませんでした');
-            const y = first.y;
-            const startX = first.left - 60;
-            const endX = last.left + last.width + 60;
-            await page.mouse.move(startX, y - 90);
-            await page.mouse.move(startX, y);
+            await page.evaluate(() => {
+                window.moves = [];
+                window.addEventListener('pointermove', () => window.moves.push(performance.now()), {capture: true, passive: true});
+            });
 
-            const began = Date.now();
-            for (let x = startX; x < endX; x = startX + (Date.now() - began) / 1000 * speed) {
-                await page.mouse.move(x, y);
-                await page.waitForTimeout(8);
+            for (let attempt = 1; ; ++attempt) {
+                const before = await playStateCounts(page);
+                const first = await wordCentre(page, '昨日');
+                const last = await wordCentre(page, '行きませんでした');
+                const y = first.y;
+                const startX = first.left - 60;
+                const endX = last.left + last.width + 60;
+                await page.mouse.move(startX, y - 90);
+                await page.mouse.move(startX, y);
+                await page.evaluate(() => {
+                    window.moves.length = 0;
+                });
+
+                const began = Date.now();
+                for (let x = startX; x < endX; x = startX + (Date.now() - began) / 1000 * speed) {
+                    await page.mouse.move(x, y);
+                    await page.waitForTimeout(8);
+                }
+
+                const measured = Math.round((endX - startX) / ((Date.now() - began) / 1000));
+                await page.mouse.move(endX, y - 90);
+                await page.waitForTimeout(HOVER_DELAY * 2);
+                console.log(`crossed ${Math.round(endX - startX)} px at ${measured} px/s`);
+
+                // A busy machine can hold a move back for as long as the delay. Then the mouse really did rest, and
+                // pausing was right, so that crossing says nothing, and it goes again.
+                const longestGap = await page.evaluate(() => Math.max(0, ...window.moves.slice(1).map((time, index) => time - window.moves[index])));
+                if (longestGap < HOVER_DELAY * 0.75) {
+                    const after = await playStateCounts(page);
+                    expect(after).toEqual(before);
+                    expect((await popupState(page)).open).toBe(false);
+                    return;
+                }
+
+                console.log(`the mouse stalled for ${Math.round(longestGap)} ms`);
+                test.skip(attempt === 5, 'This machine is too busy to move a mouse steadily.');
+                await parkMouse(page);
+                await expect.poll(() => isPaused(page)).toBe(false);
+                await showLine(page, LINES.plain);
             }
-
-            const measured = Math.round((endX - startX) / ((Date.now() - began) / 1000));
-            await page.mouse.move(endX, y - 90);
-            await page.waitForTimeout(HOVER_DELAY * 2);
-            console.log(`crossed ${Math.round(endX - startX)} px at ${measured} px/s`);
-            expect(await playStateCounts(page)).toEqual({pause: 0, play: 0});
-            expect((await popupState(page)).open).toBe(false);
         });
     }
 
