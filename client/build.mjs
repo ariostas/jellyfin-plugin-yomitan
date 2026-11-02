@@ -3,19 +3,29 @@
 import {createHash} from 'node:crypto';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
+import {gzipSync} from 'node:zlib';
 import {build} from 'esbuild';
 import {displayCss} from './display-css.mjs';
 
 const yomitan = new URL('../third_party/yomitan/', import.meta.url).pathname;
-const {version} = JSON.parse(await readFile(new URL('package.json', import.meta.url), 'utf8'));
+const version = (await readFile(new URL('../VERSION', import.meta.url), 'utf8')).trim();
+
+// The npm packages that may end up in a bundle, each with its notice in THIRD-PARTY-NOTICES.md. The build fails on any
+// other, so a new one cannot ship without its license.
+const noticedPackages = new Set(['kanji-processor']);
+
+// What each script may weigh gzipped, in KB, since that is about what crosses the network. The loader is on every page of
+// jellyfin-web, and the engine starts every video. tests/e2e/injection.spec.mjs checks what the server sends.
+const budgets = {'client.js': 6, 'engine.js': 110, 'settings-page.js': 5, 'admin.js': 5};
 
 const licenseBanner = `/*
  * Jellyfin Yomitan client. Copyright (C) the Jellyfin Yomitan contributors. GPL-3.0.
  * Bundles Yomitan's language and display code, its display templates, stylesheets and icons, Copyright (C) 2023-2026
  * Yomitan Authors, Copyright (C) 2016-2022 Yomichan Authors, under the GNU General Public License version 3 or later.
  * See https://github.com/yomidevs/yomitan.
- * This program comes with ABSOLUTELY NO WARRANTY. Source: third_party/yomitan in the plugin's repository.
- * Bundles kanji-processor, Copyright (c) 2024 Lyroxide, under the MIT License.
+ * This program comes with ABSOLUTELY NO WARRANTY. Source: https://github.com/ariostas/jellyfin-yomitan, with Yomitan in
+ * third_party/yomitan. Bundles kanji-processor, Copyright (c) 2024 Lyroxide, under the MIT License. See
+ * THIRD-PARTY-NOTICES.md there.
  */`;
 
 // Yomitan's own build generates ext/lib, so these lines do what its dev/lib directory does.
@@ -77,6 +87,7 @@ const common = {
     minify: true,
     legalComments: 'none',
     logLevel: 'warning',
+    metafile: true,
 };
 
 const engine = await build({
@@ -104,7 +115,7 @@ const settingsPage = await build({
 await writeBundle(settingsPage.outputFiles[0]);
 
 // jellyfin-web imports this one itself, through its route for a plugin's pages.
-await build({
+const admin = await build({
     ...common,
     entryPoints: ['src/admin/entry.js'],
     outfile: 'dist/admin.js',
@@ -124,3 +135,21 @@ const client = await build({
     write: false,
 });
 await writeBundle(client.outputFiles[0]);
+
+const bundled = new Set([engine, settingsPage, admin, client].flatMap(({metafile}) => Object.keys(metafile.inputs))
+    .map((input) => input.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1])
+    .filter(Boolean));
+const unnoticed = [...bundled].filter((name) => !noticedPackages.has(name));
+if (unnoticed.length > 0) {
+    throw new Error(`Bundled without a notice in THIRD-PARTY-NOTICES.md: ${unnoticed.join(', ')}`);
+}
+
+const sizes = await Promise.all(Object.entries(budgets).map(async ([name, budget]) => {
+    const kb = gzipSync(await readFile(join(import.meta.dirname, 'dist', name))).length / 1024;
+    return {name, kb, budget};
+}));
+console.log(`Bundles, gzipped: ${sizes.map(({name, kb, budget}) => `${name} ${kb.toFixed(1)} of ${budget} KB`).join(', ')}`);
+const over = sizes.filter(({kb, budget}) => kb > budget);
+if (over.length > 0) {
+    throw new Error(`Over budget: ${over.map(({name}) => name).join(', ')}`);
+}

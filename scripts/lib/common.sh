@@ -16,4 +16,6 @@ dotnet_in_container() {
         "$sdk_image" dotnet "$@"
 }
 
-jellyfin_image=${JF_IMAGE:-docker.io/jellyfin/jellyfin:latest}
+# The server the tests run on, pinned so that a new release shows up in the scheduled CI first, and not as a failure on
+# a push. Keep it on a full tag, which never moves. The oldest supported is in the csproj, as JellyfinVersion.
+jellyfin_image=${JF_IMAGE:-docker.io/jellyfin/jellyfin:12.4.20261026-211555}
