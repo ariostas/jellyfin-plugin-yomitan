@@ -1,0 +1,102 @@
+# Every week, the whole suite against the newest Jellyfin image and the pinned one in scripts/lib/common.sh, and the
+# compat set against the oldest supported. The plugin leans on jellyfin-web's DOM, which is not an API (PLAN.md lists
+# what), so a failure on latest alone is the early warning that a release has changed it. One job per browser and image
+# keeps each well inside GitHub's six hours.
+name: Scheduled
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: ${{ matrix.browser }} on ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [pinned, latest]
+        browser: [chromium, firefox, webkit, android-chrome]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          browsers: ${{ matrix.browser }}
+      - name: Every spec on a plain server
+        env:
+          JF_IMAGE: ${{ matrix.image == 'latest' && 'docker.io/jellyfin/jellyfin:latest' || '' }}
+          JF_MATRIX_BROWSERS: ${{ matrix.browser }}
+        # An empty JF_IMAGE is the pinned one.
+        run: scripts/test-matrix.sh plain
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-${{ matrix.browser }}-${{ matrix.image }}
+          path: tests/test-results
+          retention-days: 14
+
+  # BaseUrl and File Transformation change how the page reaches the browser, and not what it does there, so these run
+  # only the specs that depend on them, in Chromium. scripts/test-matrix.sh says which and why.
+  variants:
+    name: variants on ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [pinned, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+      - name: BaseUrl and File Transformation
+        env:
+          JF_IMAGE: ${{ matrix.image == 'latest' && 'docker.io/jellyfin/jellyfin:latest' || '' }}
+        run: scripts/test-matrix.sh base-url ft-outer ft-inner ft-inner-base-url
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-variants-${{ matrix.image }}
+          path: tests/test-results
+          retention-days: 14
+
+  # The oldest server the manifest offers the plugin to, from JellyfinVersion in the csproj, and the install through a
+  # repository on the newest.
+  oldest-and-catalogue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+      - name: The smoke set and playback on the oldest
+        env:
+          JF_IMAGE: docker.io/jellyfin/jellyfin:12.0.20260908-012347
+        run: scripts/test-matrix.sh compat
+      - name: Install from a repository on the newest
+        if: ${{ !cancelled() }}
+        env:
+          JF_IMAGE: docker.io/jellyfin/jellyfin:latest
+        run: scripts/test-matrix.sh catalogue
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-oldest-and-catalogue
+          path: tests/test-results
+          retention-days: 14

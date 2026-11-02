@@ -1,0 +1,49 @@
+name: Set up the Playwright tests
+description: >-
+  Node, the test dependencies, Playwright's browsers with their system libraries, rootless Podman, and the caches of the
+  test media and the NuGet packages.
+
+inputs:
+  browsers:
+    description: The Playwright browsers to install, separated by spaces. android-chrome runs in chromium.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: |
+          client/package-lock.json
+          tests/package-lock.json
+
+    # scripts/gen-media.sh makes these with the server image's ffmpeg, and skips the work when they are current.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .dev/media
+        key: media-${{ hashFiles('scripts/gen-media.sh', 'tests/lib/pgs.mjs', 'tests/fixtures/*.ass', 'tests/fixtures/*.srt') }}
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .dev/nuget
+        key: nuget-${{ hashFiles('**/*.csproj') }}
+
+    # Ubuntu 24.04 keeps unprivileged user namespaces behind AppArmor, and rootless Podman needs one. The runner is
+    # thrown away after the job.
+    - name: Podman
+      shell: bash
+      run: |
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        podman info --format 'Podman {{.Version.Version}}, {{.Host.NetworkBackend}}, rootless {{.Host.Security.Rootless}}'
+
+    - name: Browsers
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: |
+        npm ci --prefix tests
+        cd tests
+        # shellcheck disable=SC2086 # a list of names
+        npx playwright install --with-deps ${BROWSERS//android-chrome/chromium}

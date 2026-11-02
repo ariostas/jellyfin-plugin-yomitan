@@ -1,0 +1,160 @@
+# On a version tag: all of CI, and the compat set on the oldest supported server. Then the zip, an install of it from a
+# repository through the dashboard (an upgrade from the previous release when there is one), the GitHub release, and last
+# the new version in manifest.json on main, which is the repository URL users add. Nothing is published unless everything
+# before it passed, and the manifest only ever gains a version: scripts/lib/manifest.mjs refuses to write one that lost
+# or changed any.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+
+      - name: The tag is the version in VERSION
+        run: |
+          [[ $GITHUB_REF_NAME == "v$(cat VERSION)" ]] || { echo "Tag $GITHUB_REF_NAME, but VERSION says $(cat VERSION)"; exit 1; }
+
+      - name: Build and package
+        run: |
+          scripts/build.sh
+          scripts/package.sh
+          scripts/release-notes.sh "$GITHUB_REF_NAME" > out/release/notes.md
+          cat out/release/notes.md
+
+      # The release goes into the manifest on main as it is now, so check that before anything is published.
+      - name: The manifest takes it
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          git show origin/main:manifest.json > out/release/manifest.json
+          zip=$(ls out/release/yomitan_*.zip)
+          node scripts/lib/manifest.mjs add out/release/manifest.json "$zip" \
+            "https://github.com/$REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$zip")" out/release/notes.md
+
+      # The newest release in the manifest, as users have it, upgraded to this one through the dashboard.
+      - name: Install, or upgrade, from a repository
+        run: |
+          zips=()
+          mkdir -p .dev
+          git show origin/main:manifest.json > .dev/published.json
+          previous=$(node scripts/lib/manifest.mjs latest .dev/published.json)
+          if [[ -n $previous ]]; then
+            read -r url checksum <<<"$previous"
+            curl --fail --silent --show-error --location --output .dev/previous.zip "$url"
+            [[ $(md5sum .dev/previous.zip | cut -d' ' -f1) == "$checksum" ]]
+            zips+=("$PWD/.dev/previous.zip")
+          fi
+          zips+=("$(ls "$PWD"/out/release/yomitan_*.zip)")
+          YOMITAN_CATALOGUE_ZIPS=$(IFS=,; echo "${zips[*]}") scripts/test-matrix.sh catalogue
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            out/release/yomitan_*.zip
+            out/release/notes.md
+          retention-days: 30
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalogue-results
+          path: tests/test-results
+          retention-days: 14
+
+  # The oldest server the manifest offers it to: JellyfinVersion in the csproj.
+  oldest:
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+      - name: The smoke set and playback on the oldest
+        env:
+          JF_IMAGE: docker.io/jellyfin/jellyfin:12.0.20260908-012347
+        run: scripts/test-matrix.sh compat
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oldest-results
+          path: tests/test-results
+          retention-days: 14
+
+  publish:
+    needs: [package, oldest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+
+      # A draft until the zip is up, so no one sees a release without it. Running the job again skips what is done.
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" release/yomitan_*.zip --draft --verify-tag \
+              --title "$GITHUB_REF_NAME" --notes-file release/notes.md
+          fi
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+
+      # Added to main as it is at the moment of the push, so a commit that landed meanwhile is kept, and tried again if
+      # main moves in between.
+      - name: Manifest on main
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          zip=$(ls release/yomitan_*.zip)
+          url="https://github.com/$REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$zip")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main
+            git reset --quiet --hard origin/main
+            node scripts/lib/manifest.mjs add manifest.json "$zip" "$url" release/notes.md
+            git diff --quiet manifest.json && exit 0
+            git commit --quiet -m "chore: add ${GITHUB_REF_NAME#v} to the plugin manifest" manifest.json
+            git push --quiet origin HEAD:main && exit 0
+            echo "main moved, attempt $attempt"
+          done
+          exit 1
