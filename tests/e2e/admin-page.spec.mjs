@@ -56,6 +56,22 @@ test('an admin finds it in the dashboard\'s menu, under any BaseUrl', {tag: '@sm
     expect(page.url()).toContain('#/configurationpage?name=yomitan');
 });
 
+test('the page links to Yomitan\'s list of dictionaries, in a new tab', async ({page, context}) => {
+    // The test stays offline: the new tab gets a stand-in for the wiki.
+    await context.route('https://yomitan.wiki/**', (route) => route.fulfill({contentType: 'text/html', body: '<title>Dictionaries</title>'}));
+    await openPage(page);
+    const link = page.getByRole('link', {name: 'list of dictionaries'});
+    await expect(link).toHaveAttribute('href', 'https://yomitan.wiki/dictionaries/');
+
+    const opened = context.waitForEvent('page');
+    await link.click();
+    const tab = await opened;
+    await tab.waitForLoadState();
+    expect(tab.url()).toBe('https://yomitan.wiki/dictionaries/');
+    expect(await tab.evaluate(() => window.opener)).toBeNull();
+    expect(page.url()).toContain('#/configurationpage?name=yomitan');
+});
+
 test('a file goes up, shows its progress, and joins the list with its numbers', {tag: '@smoke'}, async ({page}) => {
     await openPage(page);
     await expect(page.locator('#yomitanList')).toContainText('Nothing is installed');
