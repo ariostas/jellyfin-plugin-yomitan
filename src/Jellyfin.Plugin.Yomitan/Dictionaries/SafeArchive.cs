@@ -159,13 +159,26 @@ internal sealed class SafeArchive : IDisposable
             throw new ImportException("invalid_archive", "Not a zip file");
         }
 
+        // ZipArchive follows the zip64 record when any of these three is at its maximum, and then reads the directory
+        // where that record says. This has to look in the same place, or a 1-entry directory here hides the real one.
         long directoryStart = BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(end + 16));
-        if (directoryStart == uint.MaxValue && end >= 20
-            && BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(end - 20)) == Locator64Signature)
+        var isZip64 = directoryStart == uint.MaxValue
+            || BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(end + 4)) == ushort.MaxValue
+            || BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(end + 10)) == ushort.MaxValue;
+        // The locator sits just before the end record, which a long comment can put outside the tail read above.
+        var locator = new byte[20];
+        var locatorPosition = length - tailSize + end - locator.Length;
+        if (isZip64 && locatorPosition >= 0)
+        {
+            archive.Position = locatorPosition;
+            archive.ReadExactly(locator);
+        }
+
+        if (isZip64 && BinaryPrimitives.ReadUInt32LittleEndian(locator) == Locator64Signature)
         {
             var end64 = new byte[56];
             archive.Position = (long)Math.Min(
-                BinaryPrimitives.ReadUInt64LittleEndian(tail.AsSpan(end - 12)), (ulong)Math.Max(0, length - end64.Length));
+                BinaryPrimitives.ReadUInt64LittleEndian(locator.AsSpan(8)), (ulong)Math.Max(0, length - end64.Length));
             archive.ReadExactly(end64);
             if (BinaryPrimitives.ReadUInt32LittleEndian(end64) != End64Signature)
             {

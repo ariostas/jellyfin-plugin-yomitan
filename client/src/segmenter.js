@@ -370,9 +370,14 @@ export async function segmentText(text, scan) {
 }
 
 export class Segmenter {
-    /** @param {import('./engine/engine.js').Engine} engine */
-    constructor(engine) {
+    /**
+     * @param {import('./engine/engine.js').Engine} engine
+     * @param {object} [options]
+     * @param {AbortSignal} [options.signal] Ends whatever segmenting is under way, as when the session ends.
+     */
+    constructor(engine, {signal} = {}) {
         this._engine = engine;
+        this._signal = signal;
         this._results = new Map();
     }
 
@@ -401,7 +406,7 @@ export class Segmenter {
         const windows = splitRuns(text).flatMap((run) => (
             Array.from({length: run.text.length}, (_, index) => scanWindow(run.text, index))
         ));
-        const {complete} = await this._engine.prefetch(windows);
+        const {complete} = await this._engine.prefetch(windows, {signal: this._signal});
         const words = await segmentText(text, (window) => this._engine.scan(window));
 
         // A cut-short answer can miss the longest match, so it is used now and not kept.

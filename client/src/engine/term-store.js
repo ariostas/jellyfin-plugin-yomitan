@@ -18,7 +18,10 @@ const MAX_TERMS = 50_000;
 const MAX_ROWS = 30_000;
 
 export class TermStore {
-    /** @param {(terms: string[]) => Promise<{rows: object[], truncated: boolean}>} fetchTerms Sends one request. */
+    /**
+     * @param {(terms: string[], signal?: AbortSignal) => Promise<{rows: object[], truncated: boolean}>} fetchTerms Sends
+     *   one request.
+     */
     constructor(fetchTerms) {
         this._fetchTerms = fetchTerms;
         this.clear();
@@ -56,26 +59,28 @@ export class TermStore {
     /**
      * Makes sure the store can answer for `terms`, in as few requests as it can.
      * @param {Iterable<string>} terms
+     * @param {object} [options]
+     * @param {AbortSignal} [options.signal] Gives up. What has arrived by then is kept.
      * @returns {Promise<boolean>} False if the server cut an answer short. Those terms stay unknown, so they are asked
      *   for again next time, and what did arrive still answers for now.
      */
-    async ensure(terms) {
+    async ensure(terms, {signal} = {}) {
         const missing = [...new Set(terms)].filter((term) => !this._known.has(term));
         let complete = true;
         for (let start = 0; start < missing.length; start += MAX_TERMS_PER_REQUEST) {
-            complete = await this._fetch(missing.slice(start, start + MAX_TERMS_PER_REQUEST), 0) && complete;
+            complete = await this._fetch(missing.slice(start, start + MAX_TERMS_PER_REQUEST), 0, signal) && complete;
         }
 
         return complete;
     }
 
-    async _fetch(terms, splits) {
+    async _fetch(terms, splits, signal) {
         const {generation} = this;
-        const {rows, truncated} = await this._fetchTerms(terms);
+        const {rows, truncated} = await this._fetchTerms(terms, signal);
         if (generation !== this.generation) {
             // The dictionaries changed under this request, so ask again against the new ones. After a playback has
             // ended there is nobody to ask for.
-            return this.closed ? false : this.ensure(terms);
+            return this.closed ? false : this.ensure(terms, {signal});
         }
 
         this._addRows(rows);
@@ -92,8 +97,8 @@ export class TermStore {
         }
 
         const middle = terms.length >> 1;
-        const first = await this._fetch(terms.slice(0, middle), splits + 1);
-        const second = await this._fetch(terms.slice(middle), splits + 1);
+        const first = await this._fetch(terms.slice(0, middle), splits + 1, signal);
+        const second = await this._fetch(terms.slice(middle), splits + 1, signal);
         return first && second;
     }
 

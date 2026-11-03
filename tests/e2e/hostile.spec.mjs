@@ -167,6 +167,28 @@ test('its styles stay inside the popup, and cannot cover the page', async ({page
     expect(state.title).toContain('<img');
 });
 
+// 字幕 is in Mini as well, so its popup has another dictionary's entry beside this one's.
+test('its styles cannot reach the frame or another dictionary\'s entries', async ({page}) => {
+    await openLinks(page);
+    const state = await page.evaluate(() => {
+        const {shadowRoot} = document.querySelector('.yomitan-popup');
+        const frame = getComputedStyle(shadowRoot.querySelector('.popup-frame'));
+        const items = [...shadowRoot.querySelectorAll('.definition-item')];
+        return {
+            frame: {position: frame.position, outline: frame.outlineStyle, visibility: frame.visibility, contain: frame.contain},
+            visible: items.map((item) => [item.dataset.dictionary, item.checkVisibility()]),
+            css: shadowRoot.querySelectorAll('style')[1].textContent,
+        };
+    });
+    expect(state.visible).toContainEqual(['Mini', true]);
+    expect(state.visible.every(([, visible]) => visible)).toBe(true);
+    expect(state.frame).toMatchObject({outline: 'none', visibility: 'visible'});
+    expect(state.frame.position).not.toBe('fixed');
+    expect(state.frame.contain).not.toBe('none');
+    expect(state.css).not.toContain('popup-frame');
+    expect(state.css).not.toContain('~ &');
+});
+
 test('an outside link does nothing until it is followed, and then opens with no way back', async ({page, context}) => {
     await openLinks(page);
     const link = page.locator('.yomitan-popup').getByText('an outside link');

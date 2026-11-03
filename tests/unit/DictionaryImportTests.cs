@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Jellyfin.Plugin.Yomitan.Dictionaries;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace Jellyfin.Plugin.Yomitan.Tests;
@@ -202,6 +203,50 @@ public class DictionaryImportTests
         Assert.Equal(before, test.Fingerprint());
         Assert.Equal(rowsBefore, test.Run(new { op = "findTermsBulk", termList = new[] { "打つ" }, dictionaries = new[] { "Sample" }, matchType = "exact" }).GetRawText());
         Assert.Equal(0, test.Run(new { op = "findTermsBulk", termList = new[] { "新" }, dictionaries = new[] { "Sample" }, matchType = "exact" }).GetProperty("rows").GetArrayLength());
+    }
+
+    /// <summary>
+    /// An import larger than the writer's 64 MB page cache spills pages into the WAL before it commits. When it fails
+    /// in its last bank, all of that used to stay on disk beside the database.
+    /// </summary>
+    [Fact]
+    public void A_failed_import_leaves_no_large_wal_behind()
+    {
+        using var test = new TestStore();
+        var glossary = new string('x', 4096);
+        var rows = string.Join(',', Enumerable.Range(0, 30_000).Select(i => $"""["語{i}","ご","","",0,["{glossary}"],{i},""]"""));
+        var path = test.WriteZip(("index.json", TestStore.SampleIndex), ("term_bank_1.json", $"[{rows}]"), ("tag_bank_1.json", "[[1]]"));
+
+        Assert.Equal("invalid_bank", Assert.Throws<ImportException>(() => test.Import(path)).Code);
+
+        var wal = new FileInfo(test.Store.DatabasePath + "-wal");
+        Assert.InRange(wal.Exists ? wal.Length : 0, 0, 1024 * 1024);
+    }
+
+    /// <summary>A WAL that a crash, or an older version, left large is given back when the store opens.</summary>
+    [Fact]
+    public void Opening_the_store_gives_back_a_large_wal()
+    {
+        using var test = new TestStore();
+        using var other = new SqliteConnection($"Data Source={test.Store.DatabasePath};Pooling=False");
+        other.Open();
+        using (var command = other.CreateCommand())
+        {
+            command.CommandText = """
+                PRAGMA wal_autocheckpoint = 0;
+                CREATE TABLE filler(data BLOB);
+                WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000) INSERT INTO filler SELECT randomblob(4096) FROM n;
+                DROP TABLE filler;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var wal = new FileInfo(test.Store.DatabasePath + "-wal");
+        Assert.True(wal.Length > 4 * 1024 * 1024, $"the WAL is only {wal.Length} bytes");
+
+        _ = new DictionaryStore(Path.GetDirectoryName(test.Store.DatabasePath)!);
+        wal.Refresh();
+        Assert.InRange(wal.Exists ? wal.Length : 0, 0, 1024 * 1024);
     }
 
     [Fact]

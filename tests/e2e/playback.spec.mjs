@@ -366,6 +366,89 @@ test.describe('failing safe', () => {
         });
     }
 
+    // The engine is shared by every session, and its prefetches run one at a time, so one request that never ends used
+    // to stop words for every later line, track and episode.
+    test('a query that never answers gives the native line back in time, and the next track has words', async ({page}) => {
+        await logIn(page);
+        await startJapanese(page);
+        let stalled = 0;
+        await page.route('**/Yomitan/Query', () => {
+            stalled += 1;
+        });
+
+        await setVideoTime(page, 30.2);
+        await expect.poll(() => stalled).toBeGreaterThan(0);
+        const started = Date.now();
+        await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
+        expect(Date.now() - started).toBeLessThan(20_000);
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
+        expect(stalled).toBe(1);
+
+        await page.unroute('**/Yomitan/Query');
+        await setSubtitleTrack(page, TRACKS.untagged);
+        await expectTrack(page, {state: 'active', index: TRACKS.untagged});
+        await expect.poll(() => overlayWords(page).then((words) => words.length)).toBeGreaterThan(0);
+    });
+
+    test('leaving a track gives up its query, and the next track does not wait for it', async ({page}) => {
+        await logIn(page);
+        await startJapanese(page);
+        let stalled = 0;
+        await page.route('**/Yomitan/Query', (route) => {
+            stalled += 1;
+            return stalled === 1 ? undefined : route.continue();
+        });
+
+        await setVideoTime(page, 30.2);
+        await expect.poll(() => stalled).toBe(1);
+        const started = Date.now();
+        await setSubtitleTrack(page, TRACKS.untagged);
+        await expectTrack(page, {state: 'active', index: TRACKS.untagged});
+        await expect.poll(() => overlayWords(page).then((words) => words.length), {timeout: 8000}).toBeGreaterThan(0);
+        expect(Date.now() - started).toBeLessThan(10_000);
+    });
+
+    // jellyfin-web is not an API, and a release can rename what the session reads on every tick. Only calls from the
+    // plugin's bundle fail here, so jellyfin-web itself carries on as it would.
+    for (const method of ['getSecondarySubtitleStreamIndex', 'getPlayerSubtitleOffset']) {
+        test(`a playbackManager without ${method} in mid-playback gives the native line back, once`, async ({page}) => {
+            const warnings = [];
+            page.on('console', (message) => {
+                if (message.text().startsWith('[yomitan] subtitles stay as they are')) {
+                    warnings.push(message.text());
+                }
+            });
+            await logIn(page);
+            await startJapanese(page);
+            await page.evaluate((name) => {
+                const manager = window.__yomitanJellyfin.playbackManager;
+                const original = manager[name];
+                window.renamedCalls = 0;
+                manager[name] = function (...args) {
+                    if (new Error().stack.includes('/Yomitan/engine.js')) {
+                        window.renamedCalls += 1;
+                        throw new TypeError(`manager.${name} is not a function`);
+                    }
+
+                    return original.apply(this, args);
+                };
+            }, method);
+
+            await expectTrack(page, {state: 'inactive', index: TRACKS.japanese});
+            await expect.poll(() => jellyfinLine(page)).toBe('showing');
+            expect(await nativeState(page)).toMatchObject({hiding: false, overlay: false});
+            const calls = await page.evaluate(() => window.renamedCalls);
+            const time = await page.evaluate(() => document.querySelector('video.htmlvideoplayer').currentTime);
+            await page.waitForTimeout(1500);
+            expect(await page.evaluate((before) => ({
+                calls: window.renamedCalls,
+                paused: document.querySelector('video.htmlvideoplayer').paused,
+                moved: document.querySelector('video.htmlvideoplayer').currentTime > before,
+            }), time)).toEqual({calls, paused: false, moved: true});
+            expect(warnings).toHaveLength(1);
+        });
+    }
+
     test('a query the server refuses is not retried', async ({page}) => {
         await logIn(page);
         await startJapanese(page);

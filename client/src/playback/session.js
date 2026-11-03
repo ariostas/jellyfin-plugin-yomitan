@@ -130,7 +130,7 @@ export class PlaybackSession {
         this._driving = new AbortController();
         const {signal} = this._driving;
         this._engine = engine;
-        this._segmenter = new Segmenter(engine);
+        this._segmenter = new Segmenter(engine, {signal});
         this._timeline = new CueTimeline(cues);
         this._layer = new Layer(signal);
         this._overlay = new Overlay(this._layer.element);
@@ -162,7 +162,7 @@ export class PlaybackSession {
         this.state = 'active';
 
         engine.addEventListener('dictionarieschange', this._onDictionariesChanged, {signal});
-        const render = () => this._render();
+        const render = () => this._safely(() => this._render());
         for (const type of ['timeupdate', 'seeking', 'seeked', 'pause', 'play', 'ratechange']) {
             this._video.addEventListener(type, render, {signal});
         }
@@ -176,10 +176,24 @@ export class PlaybackSession {
     /** Runs on the controller's timer, which also runs while paused, when the video has no events to offer. */
     poll() {
         if (this.state === 'active') {
-            this._native.enforce();
-            this._overlay.setBelowSecondary(this._playback.hasSecondarySubtitles());
-            this._followOsd();
-            this._render();
+            this._safely(() => {
+                this._native.enforce();
+                this._overlay.setBelowSecondary(this._playback.hasSecondarySubtitles());
+                this._followOsd();
+                this._render();
+            });
+        }
+    }
+
+    /**
+     * Runs what timers and events do once the overlay is up. A throw there reaches nobody and comes back on the next
+     * tick, with Jellyfin's subtitles hidden all the while, as when jellyfin-web renames a method this reads.
+     */
+    _safely(work) {
+        try {
+            work();
+        } catch (error) {
+            this._fail(error);
         }
     }
 
@@ -187,7 +201,7 @@ export class PlaybackSession {
     _onOsdToggled = () => {
         requestAnimationFrame(() => {
             if (this.state === 'active') {
-                this._followOsd();
+                this._safely(() => this._followOsd());
             }
         });
     };
@@ -211,8 +225,8 @@ export class PlaybackSession {
     _onAnimationFrame = () => {
         this._animationFrame = 0;
         if (this.state === 'active') {
-            this._render();
-            if (!this._video.paused) {
+            this._safely(() => this._render());
+            if (this.state === 'active' && !this._video.paused) {
                 this._startAnimation();
             }
         }
@@ -296,11 +310,11 @@ export class PlaybackSession {
 
     _onSettingChanged = ({detail: {name, value}}) => {
         if (name === 'fontScale') {
-            this._overlay.setFontScale(value);
+            this._safely(() => this._overlay.setFontScale(value));
         }
     };
 
-    _onDictionariesChanged = () => {
+    _onDictionariesChanged = () => this._safely(() => {
         this._segmenter.clear();
         const {unusable} = this._engine;
         if (unusable) {
@@ -312,7 +326,7 @@ export class PlaybackSession {
         this.lookup.close('gone');
         this._shownKey = null;
         this._render();
-    };
+    });
 
     /** Any failure of ours ends here, with Jellyfin's subtitles showing. */
     _fail(error) {

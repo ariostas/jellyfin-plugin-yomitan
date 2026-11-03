@@ -130,6 +130,71 @@ public class HostileArchiveTests
         Assert.Contains("entries", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// ZipArchive also follows the zip64 record when the end record's entry count or disk number is at its maximum,
+    /// with a real 32-bit offset beside it. That offset can point at a directory of one entry, made up for the walk,
+    /// while the zip64 record points at the real one.
+    /// </summary>
+    [Theory]
+    [InlineData(8)] // The entry count on this disk and in all, which must agree.
+    [InlineData(4)] // This disk's number and the directory's, which must agree.
+    public void A_directory_hidden_behind_the_zip64_record_is_still_counted(int field)
+    {
+        using var test = new TestStore();
+        var path = test.WriteZip(Enumerable.Range(0, 50).Select(i => ($"f{i:D2}", "x")).Prepend(Index).ToArray());
+        var bytes = File.ReadAllBytes(path);
+        var end = bytes.Length - 22;
+        var entries = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(end + 10));
+        var directorySize = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 12));
+        var directoryStart = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 16));
+
+        // The decoy is a copy of the last header under another name, after the real directory.
+        var last = -1;
+        for (var i = (int)directoryStart; i < end; i++)
+        {
+            if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(i)) == 0x02014b50)
+            {
+                last = i;
+            }
+        }
+
+        var decoy = bytes[last..end];
+        decoy[46] = (byte)'g';
+
+        var end64 = new byte[56];
+        BinaryPrimitives.WriteUInt32LittleEndian(end64, 0x06064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(4), 44);
+        BinaryPrimitives.WriteUInt16LittleEndian(end64.AsSpan(12), 45);
+        BinaryPrimitives.WriteUInt16LittleEndian(end64.AsSpan(14), 45);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(24), entries + 1UL);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(32), entries + 1UL);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(40), directorySize + (ulong)decoy.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(48), directoryStart);
+
+        var locator = new byte[20];
+        BinaryPrimitives.WriteUInt32LittleEndian(locator, 0x07064b50);
+        BinaryPrimitives.WriteUInt64LittleEndian(locator.AsSpan(8), (ulong)(end + decoy.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(locator.AsSpan(16), 1);
+
+        var tail = bytes[end..];
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(8), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(10), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(field), ushort.MaxValue);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail.AsSpan(field + 2), ushort.MaxValue);
+        BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(12), (uint)decoy.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(16), (uint)end);
+        File.WriteAllBytes(path, [.. bytes[..end], .. decoy, .. end64, .. locator, .. tail]);
+
+        using (var zip = new ZipArchive(File.OpenRead(path)))
+        {
+            Assert.Equal(52, zip.Entries.Count);
+        }
+
+        var error = Assert.Throws<ImportException>(() => test.Import(path, limits: new ImportLimits { MaxEntries = 10 }));
+        Assert.Equal("limit_exceeded", error.Code);
+        Assert.Contains("entries", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_bank_over_the_limit_is_refused_by_its_declared_size()
     {

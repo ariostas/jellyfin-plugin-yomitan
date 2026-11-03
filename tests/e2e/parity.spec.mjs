@@ -97,8 +97,9 @@ function buildOperations(dictionaries, terms, readings, kanji, tags, sequences) 
     );
 
     for (const matchType of ['exact', 'prefix', 'suffix']) {
-        // One large list, so visited interacts across items, and each item alone, so order is seen per item.
-        const list = [...strings, ...fragments, ...missing];
+        // One large list, so visited interacts across items, and each item alone, so order is seen per item. The server
+        // refuses an empty prefix or suffix, which the Translator never sends: see docs/api.md.
+        const list = [...strings, ...fragments, ...missing].filter((text) => matchType === 'exact' || text !== '');
         operations.push({op: 'findTermsBulk', termList: list, dictionaries: all, matchType});
         operations.push({op: 'findTermsBulk', termList: [...list].reverse(), dictionaries: all, matchType});
         for (const text of list) {
@@ -240,7 +241,9 @@ test('every operation returns exactly what DictionaryDatabase returns', async ()
     }
 
     const realFirst = Math.min(...collect(seed, 'id'));
-    const [servedSeed] = await serverRows([{op: 'findTermsBulk', termList: [''], dictionaries, matchType: 'prefix'}]);
+    // Every row is under one of the seed's terms. The server refuses the empty prefix that found them in Yomitan.
+    const [servedSeed] = await serverRows([{op: 'findTermsBulk', termList: terms, dictionaries, matchType: 'exact'}]);
+    expect(servedSeed).toHaveLength(seed[0].length);
     const servedFirst = Math.min(...collect([servedSeed], 'id'));
 
     const a = normalize(real, realFirst);

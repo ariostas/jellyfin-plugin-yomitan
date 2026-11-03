@@ -28,10 +28,10 @@ export class Engine extends EventTarget {
         this._settings = settings ?? ALL_DICTIONARIES;
         settings?.addEventListener('change', this._onSettingChanged);
         this._client = new QueryClient((dictionaries) => this._onDictionariesChanged(dictionaries));
-        this._terms = new TermStore(async (terms) => {
+        this._terms = new TermStore(async (terms, signal) => {
             const [result] = await this._client.send([
                 {op: 'findTermsBulk', termList: terms, dictionaries: this._titles, matchType: 'exact'},
-            ]);
+            ], {signal});
             return result;
         });
         this._database = new RemoteDb(this._client, this._terms);
@@ -158,20 +158,26 @@ export class Engine extends EventTarget {
     /**
      * Fetches, in one request, everything `scan` will need for these windows of text. The Translator's candidates come
      * from running it against a database that only records them, so this stays exact as Yomitan's rules change.
+     * Prefetches run one at a time, for every session this engine serves, so each must end: the request has a
+     * timeout, and a session that ends aborts its own, without holding up the next session's.
      * @param {string[]} windows
+     * @param {object} [options]
+     * @param {AbortSignal} [options.signal] Gives up, whether this is waiting its turn or under way.
      * @returns {Promise<{complete: boolean}>} `complete` is false if the server cut an answer short.
      */
-    prefetch(windows) {
+    prefetch(windows, {signal} = {}) {
         const run = async () => {
+            signal?.throwIfAborted();
             this._terms.makeRoom();
             this._recording.terms.clear();
             for (const window of new Set(windows)) {
                 await this._planner.findTerms('simple', window, this._options);
                 await yieldIfBusy();
+                signal?.throwIfAborted();
             }
 
             const terms = [...this._recording.terms];
-            return {complete: await this._terms.ensure(terms)};
+            return {complete: await this._terms.ensure(terms, {signal})};
         };
 
         const result = this._planning.then(run, run);

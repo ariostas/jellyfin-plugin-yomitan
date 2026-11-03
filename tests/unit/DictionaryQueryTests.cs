@@ -133,6 +133,7 @@ public class DictionaryQueryTests
             new { op = "findTermsBulk", termList = new[] { "語" }, dictionaries = new[] { "Nope" }, matchType = "exact" },
             new { op = "findTermsBulk", termList = new[] { "語" }, dictionaries = Array.Empty<string>(), matchType = "exact" },
             new { op = "findTermsBulk", termList = Array.Empty<string>(), dictionaries = Sample, matchType = "exact" },
+            new { op = "findTermsBulk", termList = new[] { string.Empty }, dictionaries = Sample, matchType = "exact" },
             new { op = "findTermsBySequenceBulk", items = new[] { new { query = 1, dictionary = "Nope" } } });
         foreach (var result in results.RootElement.GetProperty("results").EnumerateArray())
         {
@@ -196,6 +197,8 @@ public class DictionaryQueryTests
     [InlineData("""{"operations":[{"op":"findTermsBulk","termList":[1],"dictionaries":[],"matchType":"exact"}]}""", "invalid_request")]
     [InlineData("""{"operations":[{"op":"findTermsExactBulk","termList":[{"term":"a"}],"dictionaries":[]}]}""", "invalid_request")]
     [InlineData("""{"operations":[{"op":"findTermsBySequenceBulk","items":[{"query":"1","dictionary":"a"}]}]}""", "invalid_request")]
+    [InlineData("""{"operations":[{"op":"findTermsBulk","termList":["a",""],"dictionaries":[],"matchType":"prefix"}]}""", "invalid_request")]
+    [InlineData("""{"operations":[{"op":"findTermsBulk","termList":[""],"dictionaries":[],"matchType":"suffix"}]}""", "invalid_request")]
     public void Malformed_requests_are_refused(string body, string code)
     {
         using var test = new TestStore();
@@ -260,6 +263,132 @@ public class DictionaryQueryTests
 
         Assert.True(result.GetProperty("truncated").GetBoolean());
         Assert.InRange(result.GetProperty("rows").GetArrayLength(), 1, (QueryLimits.MaxResponseBytes / glossary.Length) + 1);
+    }
+
+    /// <summary>Each kind of row has a large field that is not a glossary, and the budget has to see it.</summary>
+    [Theory]
+    [InlineData("terms")]
+    [InlineData("tags")]
+    [InlineData("kanji")]
+    public void Byte_budget_counts_everything_a_row_writes(string kind)
+    {
+        using var test = new TestStore();
+        var big = new string('x', 64 * 1024);
+        var rows = string.Join(',', Enumerable.Range(0, 50).Select(i => kind switch
+        {
+            "terms" => $"""["語{i}{big}","{big}","","",0,["g"],{i},""]""",
+            "tags" => $"""["t{i}","c",0,"{big}",0]""",
+            _ => $$"""["字","{{big}}","","",[],{}]""",
+        }));
+        var bank = kind switch { "terms" => "term_bank_1.json", "tags" => "tag_bank_1.json", _ => "kanji_bank_1.json" };
+        test.Import(("index.json", TestStore.SampleIndex), (bank, $"[{rows}]"));
+        object operation = kind switch
+        {
+            "terms" => new { op = "findTermsBulk", termList = new[] { "語" }, dictionaries = Sample, matchType = "prefix" },
+            "tags" => new { op = "findTagMetaBulk", items = Enumerable.Range(0, 50).Select(i => new { query = $"t{i}", dictionary = "Sample" }).ToArray() },
+            _ => new { op = "findKanjiBulk", kanjiList = new[] { "字" }, dictionaries = Sample },
+        };
+
+        const int Budget = 1024 * 1024;
+        var query = new DictionaryQuery(test.Store) { MaxResponseBytes = Budget };
+        using var request = JsonDocument.Parse(JsonSerializer.Serialize(new { operations = new[] { operation } }));
+        var response = query.Execute(request.RootElement);
+
+        Assert.InRange(response.Length, 1, Budget);
+        using var document = JsonDocument.Parse(response);
+        var result = document.RootElement.GetProperty("results")[0];
+        Assert.True(result.GetProperty("truncated").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, result.GetProperty("rows")[0].ValueKind);
+    }
+
+    /// <summary>
+    /// Every request the client sends ends in getDictionaryInfo, so the first always answers, but it is charged, and a
+    /// summary can carry megabytes of styles. Without that, 64 of them made a small request a huge response.
+    /// </summary>
+    [Fact]
+    public void Byte_budget_counts_dictionary_info_and_only_the_first_is_never_cut()
+    {
+        using var test = new TestStore();
+        test.Import(("index.json", """{"title":"Styled","format":3,"revision":"1"}"""), ("styles.css", $".a {{ content: \"{new string('s', 300 * 1024)}\" }}"));
+        test.Import(("index.json", TestStore.SampleIndex), ("term_bank_1.json", """[["語","ご","","",0,["word"],1,""]]"""));
+
+        const int Budget = 1024 * 1024;
+        var query = new DictionaryQuery(test.Store) { MaxResponseBytes = Budget };
+        var operations = Enumerable.Repeat<object>(new { op = "getDictionaryInfo" }, QueryLimits.MaxOperations - 1)
+            .Append(new { op = "findTermsBulk", termList = new[] { "語" }, dictionaries = Sample, matchType = "exact" });
+        using var request = JsonDocument.Parse(JsonSerializer.Serialize(new { operations }));
+        var response = query.Execute(request.RootElement);
+
+        Assert.InRange(response.Length, 1, Budget);
+        using var document = JsonDocument.Parse(response);
+        var results = document.RootElement.GetProperty("results");
+        Assert.Equal(2, results[0].GetProperty("rows").GetArrayLength());
+        Assert.False(results[0].GetProperty("truncated").GetBoolean());
+        Assert.True(results[QueryLimits.MaxOperations - 1].GetProperty("truncated").GetBoolean());
+        Assert.Equal(0, results[QueryLimits.MaxOperations - 1].GetProperty("rows").GetArrayLength());
+
+        // However little is left, the first still answers in full.
+        using var alone = JsonDocument.Parse("""{"operations":[{"op":"getDictionaryInfo"}]}""");
+        var tiny = new DictionaryQuery(test.Store) { MaxResponseBytes = 1 };
+        using var answer = JsonDocument.Parse(tiny.Execute(alone.RootElement));
+        Assert.Equal(2, answer.RootElement.GetProperty("results")[0].GetProperty("rows").GetArrayLength());
+    }
+
+    /// <summary>
+    /// The budget is no use if every candidate row is read into memory before it is checked: 40 glossaries under one
+    /// key here are 20 MB, for a response of 1 MB.
+    /// </summary>
+    [Fact]
+    public void Byte_budget_stops_reading_as_well_as_writing()
+    {
+        using var test = new TestStore();
+        var glossary = new string('x', 512 * 1024);
+        var rows = string.Join(',', Enumerable.Range(0, 40).Select(i => $"""["語","ご","","",0,["{glossary}"],{i},""]"""));
+        test.Import(("index.json", TestStore.SampleIndex), ("term_bank_1.json", $"[{rows}]"));
+
+        const int Budget = 1024 * 1024;
+        var query = new DictionaryQuery(test.Store) { MaxResponseBytes = Budget };
+        using var request = JsonDocument.Parse("""{"operations":[{"op":"findTermsBulk","termList":["語"],"dictionaries":["Sample"],"matchType":"exact"}]}""");
+        GC.Collect();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var response = query.Execute(request.RootElement);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using var document = JsonDocument.Parse(response);
+        var result = document.RootElement.GetProperty("results")[0];
+        Assert.True(result.GetProperty("truncated").GetBoolean());
+        Assert.InRange(result.GetProperty("rows").GetArrayLength(), 1, 2);
+        Assert.InRange(allocated, 0, 8 * Budget);
+    }
+
+    /// <summary>
+    /// A range scan whose dictionaries hold none of its rows still walks every other dictionary's rows in the range, so
+    /// one statement can outlast the whole budget. The deadline has to stop it while it runs.
+    /// </summary>
+    [Fact]
+    public void Time_budget_stops_a_statement_that_is_running()
+    {
+        using var test = new TestStore();
+        var rows = string.Join(',', Enumerable.Range(0, 200_000).Select(i => $"""["あ{i}","い","","",0,["g"],{i},""]"""));
+        test.Import(("index.json", """{"title":"Big","format":3,"revision":"1"}"""), ("term_bank_1.json", $"[{rows}]"));
+        test.Import(("index.json", TestStore.SampleIndex), ("term_bank_1.json", """[["語","ご","","",0,["word"],1,""]]"""));
+        using var request = JsonDocument.Parse("""{"operations":[{"op":"findTermsBulk","termList":["あ"],"dictionaries":["Sample"],"matchType":"prefix"}]}""");
+
+        test.Query.Execute(request.RootElement);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        using (var whole = JsonDocument.Parse(test.Query.Execute(request.RootElement)))
+        {
+            Assert.False(whole.RootElement.GetProperty("results")[0].GetProperty("truncated").GetBoolean());
+        }
+
+        var unhurried = watch.Elapsed;
+        var query = new DictionaryQuery(test.Store) { MaxDuration = unhurried / 20 };
+        watch.Restart();
+        using var cut = JsonDocument.Parse(query.Execute(request.RootElement));
+        var hurried = watch.Elapsed;
+
+        Assert.True(cut.RootElement.GetProperty("results")[0].GetProperty("truncated").GetBoolean());
+        Assert.True(hurried < unhurried / 3, $"{hurried.TotalMilliseconds} ms with the deadline, {unhurried.TotalMilliseconds} ms without");
     }
 
     [Fact]

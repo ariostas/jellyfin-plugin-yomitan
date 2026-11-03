@@ -67,7 +67,13 @@ export class RemoteDb {
     }
 
     async getDictionaryInfo() {
-        return this._client.dictionaries ?? this._call({op: 'getDictionaryInfo'});
+        // Every request carries the list, so an empty one is enough, and a second getDictionaryInfo would only answer
+        // within the byte budget.
+        if (!this._client.dictionaries) {
+            await this._client.send([]);
+        }
+
+        return this._client.dictionaries;
     }
 }
 

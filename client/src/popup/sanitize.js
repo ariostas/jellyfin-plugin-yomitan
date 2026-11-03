@@ -106,18 +106,58 @@ export function sanitizeEntry(root) {
 }
 
 /**
+ * Whether a selector only reaches into the dictionary's own entries. Every rule ends up nested in the scope, so a
+ * selector with no `&` matches inside it, and a nested one that starts from `&` stays below its parent, which is inside
+ * too. Anything else with an `&` is refused: `.popup-frame:has(&)` styles the frame, and `& ~ *` at the top would be
+ * the other dictionaries. The browser writes the `&` into every nested selector that lacked one, so this reads what it
+ * will match.
+ * @param {string} selectorText
+ * @param {boolean} nested Whether the rule is inside another style rule.
+ * @returns {boolean}
+ */
+function staysInScope(selectorText, nested) {
+    let depth = 0;
+    let quote = null;
+    let bare = false;
+    for (let index = 0; index < selectorText.length; ++index) {
+        const character = selectorText[index];
+        if (character === '\\') {
+            ++index;
+        } else if (quote) {
+            quote = character === quote ? null : quote;
+        } else if (character === '"' || character === "'") {
+            quote = character;
+        } else if (character === '(' || character === '[') {
+            ++depth;
+        } else if (character === ')' || character === ']') {
+            --depth;
+        } else if (character === '&') {
+            // Inside :has(), :is() or :not() it picks something other than what the rule styles.
+            if (depth > 0 || !nested) {
+                return false;
+            }
+
+            bare = true;
+        }
+    }
+
+    return !nested || bare;
+}
+
+/**
  * Keeps style rules and the groups around them, and drops every other kind of rule, since @import, @font-face and the
  * rest either load things or have no use here. `@import` never gets this far: a constructed stylesheet ignores it.
  * @param {CSSStyleSheet|CSSGroupingRule} parent
+ * @param {boolean} [nested] Whether `parent` is inside a style rule.
  */
-function cleanRules(parent) {
+function cleanRules(parent, nested = false) {
     const rules = parent.cssRules;
     for (let index = rules.length - 1; index >= 0; --index) {
         const rule = rules[index];
         const isGroup = rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule;
         const isDeclarations = rule instanceof CSSStyleRule
             || (typeof CSSNestedDeclarations === 'function' && rule instanceof CSSNestedDeclarations);
-        if (!isGroup && !isDeclarations) {
+        if ((!isGroup && !isDeclarations) || (rule instanceof CSSStyleRule && !staysInScope(rule.selectorText, nested))) {
             parent.deleteRule(index);
             continue;
         }
@@ -127,7 +167,7 @@ function cleanRules(parent) {
         }
 
         if (rule.cssRules) {
-            cleanRules(rule);
+            cleanRules(rule, nested || rule instanceof CSSStyleRule);
         }
     }
 }

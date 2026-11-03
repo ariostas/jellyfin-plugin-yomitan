@@ -194,7 +194,9 @@ event handlers and modules all load. Nothing here relies on inline handlers, and
 **Which playback.** Nothing comes from the Sessions API. Two tabs share a `deviceId`, so the server holds one session
 for both, describing whichever reported last, and `video.src` is a `blob:` URL under hls.js. `playbackManager` is not a
 global, but its events pass through the global `Events`, so `player-hook.js` wraps `Events.trigger` until it sees one,
-then unwraps it. From there each tab asks its own `playbackManager`, which is what jellyfin-web's UI does.
+then unwraps it. User scripts and other plugins wrap it too, and if one did after the plugin, unwrapping would take theirs
+away as well, so the plugin's wrapper stays in their chain and only passes calls on. Either way it reports the
+`playbackManager` once. From there each tab asks its own `playbackManager`, which is what jellyfin-web's UI does.
 
 **Which subtitles it draws.** jellyfin-web draws text as native cues in Chromium, and in the custom `.videoSubtitles`
 element in Firefox and Safari or if the user sets Subtitle styling to Custom. ASS goes through JASSUB everywhere.
@@ -225,8 +227,15 @@ changes. `NativeSubtitles.restore()` catches them up.
 
 Jellyfin's subtitles are hidden only after the track's text, the dictionary API and at least one dictionary have all
 worked. `PlaybackSession._fail()` is the one path for anything that goes wrong after that: it removes the overlay,
-restores the native line and stays `inactive` until the track changes. Before that, `QueryClient` retries a request
+restores the native line and stays `inactive` until the track changes. That includes what runs from the controller's
+poll, animation frames and video events, which reach jellyfin-web's `playbackManager` on every tick, so a method a new
+jellyfin-web renames ends the overlay once instead of throwing every 250 ms. Before that, `QueryClient` retries a request
 twice over about 2 s on a network error or a 5xx, so a short drop only delays a line's words. A 4xx is not retried.
+
+A request with no answer after 15 s is given up, and that is not retried either. The server stops itself at 5 s, so
+by then the connection has stalled or the server is in trouble, and the engine's prefetches go one at a time for every
+session, so a retry would hold up every line behind it for 45 s more. A session that ends, for a new track or a new
+item, aborts its own request and anything it has waiting, so the next one starts at once.
 
 | Situation | What happens |
 | --- | --- |
@@ -237,6 +246,8 @@ twice over about 2 s on a network error or a 5xx, so a short drop only delays a 
 | Query fails, at the start | `inactive`, native line stays, and a notice says so |
 | Nothing usable to look words up in | The same. See [the dictionaries a user chooses](#the-dictionaries-a-user-chooses) |
 | Query fails later | Retried, then overlay removed and native line restored |
+| Query has no answer in 15 s | Overlay removed and native line restored. The next track starts afresh |
+| jellyfin-web changes under a running session | The same, once, with a warning in the console |
 | A lookup fails | Logged, popup closed, playback resumed if the plugin paused it. The session carries on |
 | A dictionary's entry cannot be drawn | The same |
 | Engine script fails to load | Logged, a notice says so, and the next start tries again |
@@ -477,6 +488,7 @@ popup and a server that counts requests.
 | An image's link is its own `blob:` URL. A blob has this page's origin, so opening a dictionary's SVG in a tab runs its scripts | The `href` is removed. An SVG only ever shows through an `<img>` |
 | `styles.css` is plain CSS, with `@import`, `url()`, `@font-face` and `image-set()` | Parsed by the browser into a `CSSStyleSheet`, and only style rules, `@media` and `@supports` come back out, with the same check on each value |
 | `position: fixed` could cover the page | The popup's frame has `contain: layout paint`, so it is the containing block, and it clips |
+| CSS nesting reaches out of the scope: `.popup-frame:has(&)` styles the frame, and `& ~ *` the dictionaries beside it | A rule is dropped if its selector has an `&` outside a nested rule, or inside the parentheses of `:has()`, `:is()` or the like. What real dictionaries write, such as Jitendex's `& ul` and `&::before`, stays |
 
 The check is a list of functions that are allowed, not of those that are not, because the ways to load something keep
 growing. A backslash anywhere in a value is refused as well: the browser resolves escapes in what it parses, but keeps them

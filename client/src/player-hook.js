@@ -1,5 +1,6 @@
 // Finds jellyfin-web's playbackManager, which is not a global. Its events all go through the global Events object,
-// so wrapping Events.trigger for a moment shows it to us, and then the wrapper goes away.
+// so wrapping Events.trigger for a moment shows it to us, and then the wrapper goes away. If another script has wrapped
+// it since, ours has to stay in their chain, and from then on it only passes calls on.
 
 /** How long to wait for jellyfin-web to define Events before giving up, in milliseconds. */
 const EVENTS_TIMEOUT_MS = 60_000;
@@ -13,9 +14,11 @@ function isPlaybackManager(target) {
 
 function wrapTrigger(events, onFound) {
     const original = events.trigger;
+    let found = false;
     const wrapper = function (target, ...rest) {
         // Nothing here can throw into Jellyfin: the test only reads typeof, and onFound guards itself.
-        if (isPlaybackManager(target)) {
+        if (!found && isPlaybackManager(target)) {
+            found = true;
             if (events.trigger === wrapper) {
                 events.trigger = original;
             }

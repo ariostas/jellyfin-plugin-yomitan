@@ -62,6 +62,17 @@ html, body { display: none; background: url("${canary}/css-body.png"); }
 `;
 }
 
+/**
+ * Rules that load nothing, and reach outside the dictionary's own entries through CSS nesting: to the popup's frame,
+ * and to the entries of the dictionaries beside it. They are kept apart from the rest so the control test in
+ * hostile.spec.mjs can apply those raw without the popup disappearing under it.
+ */
+export const SCOPE_ESCAPES = `
+.popup-frame:has(&) { position: fixed !important; inset: 0 !important; contain: none !important; outline: 5px solid rgb(255, 0, 0) !important; }
+& ~ *, :has(~ &) { display: none !important; }
+.gloss-content { .popup-frame:has(&) { visibility: hidden !important; } :is(&) ~ * { display: none !important; } }
+`;
+
 const STYLE_PROBES = (canary) => [
     ...Object.keys(STYLE_ATTACKS(canary)),
     'font', 'before', 'media', 'supports',
@@ -157,7 +168,7 @@ export function makeHostileDictionary(canary) {
             ['罠', 'pitch', {reading: script('pitch'), pitches: [{position: 0}]}],
         ]),
         entry('tag_bank_1.json', [['evil', 'name', 0, script('tag notes'), 0]]),
-        entry('styles.css', hostileStyles(canary)),
+        entry('styles.css', hostileStyles(canary) + SCOPE_ESCAPES),
         {name: 'evil.svg', data: Buffer.from(svg)},
         {name: 'pic.png', data: PNG},
     ]);

@@ -22,7 +22,7 @@ public static class QueryLimits
     /// <summary>Most rows across all operations, after which results are cut short.</summary>
     public const int MaxRows = 20_000;
 
-    /// <summary>Approximate cap on the response body, after which results are cut short.</summary>
+    /// <summary>Cap on the response body, after which results are cut short. The first getDictionaryInfo is never cut.</summary>
     public const int MaxResponseBytes = 32 * 1024 * 1024;
 
     /// <summary>Time budget in milliseconds, after which results are cut short.</summary>
@@ -58,6 +58,15 @@ public sealed class DictionaryQuery
     /// <summary>An upper bound past every string with the prefix in UTF-8 order, where astral characters sort last.</summary>
     private const string PrefixCeiling = "\U0010FFFF";
 
+    /// <summary>SQLite instructions between looks at the clock while a statement runs.</summary>
+    private const int ProgressInterval = 10_000;
+
+    /// <summary>SQLITE_INTERRUPT, which a statement stopped by the deadline fails with.</summary>
+    private const int SqliteInterrupt = 9;
+
+    /// <summary>More than the keys, punctuation and numbers of any one row take.</summary>
+    private const long RowOverhead = 512;
+
     private readonly DictionaryStore _store;
 
     /// <summary>Initializes a new instance of the <see cref="DictionaryQuery"/> class.</summary>
@@ -70,6 +79,9 @@ public sealed class DictionaryQuery
     /// <summary>Gets the time budget of a request.</summary>
     internal TimeSpan MaxDuration { get; init; } = TimeSpan.FromMilliseconds(QueryLimits.MaxDurationMs);
 
+    /// <summary>Gets the byte budget of a response.</summary>
+    internal long MaxResponseBytes { get; init; } = QueryLimits.MaxResponseBytes;
+
     /// <summary>Runs a request body.</summary>
     /// <param name="request">The parsed request.</param>
     /// <returns>The response body as UTF-8 JSON.</returns>
@@ -81,8 +93,19 @@ public sealed class DictionaryQuery
         using var connection = _store.OpenReader();
         using var transaction = connection.BeginTransaction(deferred: true);
         var dictionaries = DictionaryStore.List(connection);
-        var run = new Run(connection, dictionaries, DateTime.UtcNow + MaxDuration);
-        return run.Execute(operations);
+        var deadline = DateTime.UtcNow + MaxDuration;
+
+        // A single range scan can outlast the whole budget, so the deadline also stops a statement that is running.
+        // The connection goes back to the pool afterwards, so the handler must not stay on it.
+        SQLitePCL.raw.sqlite3_progress_handler(connection.Handle, ProgressInterval, _ => DateTime.UtcNow > deadline ? 1 : 0, null);
+        try
+        {
+            return new Run(connection, dictionaries, deadline, MaxResponseBytes).Execute(operations);
+        }
+        finally
+        {
+            SQLitePCL.raw.sqlite3_progress_handler(connection.Handle, 0, null, null);
+        }
     }
 
     private static List<JsonElement> Parse(JsonElement request)
@@ -136,7 +159,17 @@ public sealed class DictionaryQuery
                 }
 
                 RequireDictionaries(operation, name);
-                return RequireStrings(operation, name, "termList");
+                var count = RequireStrings(operation, name, "termList");
+
+                // An empty key would match every row, walking a whole index for each one. The Translator never sends
+                // one: it only searches by prefix or suffix for a wildcard, and returns early on empty text.
+                if (Text(operation.GetProperty("matchType")) != "exact"
+                    && operation.GetProperty("termList").EnumerateArray().Any(item => item.ValueEquals(string.Empty)))
+                {
+                    throw Invalid(name, "a prefix or suffix search needs a term that is not empty");
+                }
+
+                return count;
             case "findTermMetaBulk":
                 RequireDictionaries(operation, name);
                 return RequireStrings(operation, name, "termList");
@@ -258,14 +291,16 @@ public sealed class DictionaryQuery
         private readonly MemoryStream _output = new();
         private readonly Utf8JsonWriter _writer;
         private readonly DateTime _deadline;
+        private readonly long _maxBytes;
         private int _rowsLeft = QueryLimits.MaxRows;
-        private long _bytesLeft = QueryLimits.MaxResponseBytes;
         private bool _truncated;
+        private bool _sentDictionaryInfo;
 
-        public Run(SqliteConnection connection, List<DictionaryRecord> dictionaries, DateTime deadline)
+        public Run(SqliteConnection connection, List<DictionaryRecord> dictionaries, DateTime deadline, long maxBytes)
         {
             _connection = connection;
             _deadline = deadline;
+            _maxBytes = maxBytes;
             _dictionaries = dictionaries;
             _titles = dictionaries.ToDictionary(d => d.Id, d => d.Title);
             _ids = dictionaries.ToDictionary(d => d.Title, d => d.Id, StringComparer.Ordinal);
@@ -282,7 +317,16 @@ public sealed class DictionaryQuery
                 var alreadyOut = _truncated;
                 _writer.WriteStartObject();
                 _writer.WriteStartArray("rows");
-                Dispatch(operation);
+                try
+                {
+                    Dispatch(operation);
+                }
+                catch (SqliteException e) when (e.SqliteErrorCode == SqliteInterrupt)
+                {
+                    // The deadline stopped a statement. Nothing is written while one runs, so the output is whole.
+                    _truncated = true;
+                }
+
                 _writer.WriteEndArray();
                 _writer.WriteBoolean("truncated", _truncated || alreadyOut);
                 _writer.WriteEndObject();
@@ -299,6 +343,16 @@ public sealed class DictionaryQuery
             var name = Text(operation.GetProperty("op"));
             if (name == "getDictionaryInfo")
             {
+                // A client needs the list whatever else happened, so the first one always answers. It still counts, and
+                // a summary can hold megabytes of styles, so a second one only answers if it fits.
+                if (_sentDictionaryInfo
+                    && (_truncated || Written + _dictionaries.Sum(dictionary => dictionary.Summary.Length + 1L) > _maxBytes))
+                {
+                    _truncated = true;
+                    return;
+                }
+
+                _sentDictionaryInfo = true;
                 foreach (var dictionary in _dictionaries)
                 {
                     _writer.WriteRawValue(dictionary.Summary, skipInputValidation: true);
@@ -340,18 +394,30 @@ public sealed class DictionaryQuery
             }
         }
 
-        /// <summary>Takes the row from the budget, or marks the results cut short.</summary>
-        private bool Spend(long bytes)
+        /// <summary>Gets what has been written so far, which is what the byte budget is charged.</summary>
+        private long Written => _writer.BytesCommitted + _writer.BytesPending;
+
+        /// <summary>
+        /// Takes the row from the budget, or marks the results cut short. <paramref name="bound"/> is at least what the
+        /// row will write, so the response stays within the budget, and what it really wrote is charged afterwards.
+        /// </summary>
+        private bool Spend(long bound)
         {
             _rowsLeft--;
-            _bytesLeft -= bytes;
-            if (_rowsLeft < 0 || _bytesLeft < 0)
+            if (_rowsLeft < 0 || Written + bound > _maxBytes)
             {
                 _truncated = true;
             }
 
             return !_truncated;
         }
+
+        /// <summary>The most a string can take as JSON: six bytes for a character escaped as \u0000, quotes included.</summary>
+        private static long Bound(string? text) => text is null ? 0 : (6L * text.Length) + 2;
+
+        private long Bound(TermRow row)
+            => RowOverhead + row.Glossary.Length + Bound(row.Expression) + Bound(row.Reading) + Bound(row.DefinitionTags)
+                + Bound(row.TermTags) + Bound(row.Rules) + Bound(_titles[row.DictionaryId]);
 
         private bool OutOfTime()
         {
@@ -451,7 +517,7 @@ public sealed class DictionaryQuery
                             continue;
                         }
 
-                        if (!Spend(row.Glossary.Length))
+                        if (!Spend(Bound(row)))
                         {
                             return;
                         }
@@ -557,7 +623,7 @@ public sealed class DictionaryQuery
 
             foreach (var row in rows)
             {
-                if (!Spend(row.Glossary.Length))
+                if (!Spend(Bound(row)))
                 {
                     return false;
                 }
@@ -569,15 +635,19 @@ public sealed class DictionaryQuery
             return true;
         }
 
-        /// <summary>Reads at most what the budget allows, and returns whether it had to stop there.</summary>
+        /// <summary>
+        /// Reads at most what the budget allows, and returns whether it had to stop there. It stops on bytes as well as
+        /// rows, since one key can hold thousands of large glossaries, and they are read before any is written.
+        /// </summary>
         private bool ReadTerms(SqliteCommand command, List<TermRow> rows, int? sortKeyColumn)
         {
             var limit = _rowsLeft + 1L;
             command.Parameters["$limit"].Value = limit;
+            var bytesLeft = _maxBytes - Written;
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                rows.Add(new TermRow(
+                var row = new TermRow(
                     reader.GetInt64(0),
                     reader.GetInt64(1),
                     reader.GetString(2),
@@ -588,7 +658,16 @@ public sealed class DictionaryQuery
                     reader.GetDouble(7),
                     reader.GetFieldValue<byte[]>(8),
                     reader.IsDBNull(9) ? -1 : reader.GetDouble(9),
-                    sortKeyColumn is { } column ? reader.GetString(column) : string.Empty));
+                    sortKeyColumn is { } column ? reader.GetString(column) : string.Empty);
+
+                // A row that does not fit could not be written either, so reading on would be wasted.
+                bytesLeft -= Bound(row);
+                if (bytesLeft < 0)
+                {
+                    return true;
+                }
+
+                rows.Add(row);
             }
 
             return rows.Count >= limit;
@@ -660,7 +739,9 @@ public sealed class DictionaryQuery
                     while (reader.Read())
                     {
                         var data = reader.GetFieldValue<byte[]>(2);
-                        if (!Spend(data.Length))
+                        var mode = reader.GetString(1);
+                        var title = _titles[reader.GetInt64(0)];
+                        if (!Spend(RowOverhead + data.Length + Bound(key) + Bound(mode) + Bound(title)))
                         {
                             return;
                         }
@@ -668,10 +749,10 @@ public sealed class DictionaryQuery
                         _writer.WriteStartObject();
                         _writer.WriteNumber("index", itemIndex);
                         _writer.WriteString(keyName, key);
-                        _writer.WriteString("mode", reader.GetString(1));
+                        _writer.WriteString("mode", mode);
                         _writer.WritePropertyName("data");
                         _writer.WriteRawValue(data, skipInputValidation: true);
-                        _writer.WriteString("dictionary", _titles[reader.GetInt64(0)]);
+                        _writer.WriteString("dictionary", title);
                         _writer.WriteEndObject();
                     }
                 }
@@ -713,7 +794,12 @@ public sealed class DictionaryQuery
                     {
                         var meanings = reader.GetFieldValue<byte[]>(4);
                         var stats = reader.IsDBNull(5) ? "{}"u8.ToArray() : reader.GetFieldValue<byte[]>(5);
-                        if (!Spend(meanings.Length + stats.Length))
+                        var onyomi = reader.GetString(1);
+                        var kunyomi = reader.GetString(2);
+                        var tags = reader.GetString(3);
+                        var title = _titles[reader.GetInt64(0)];
+                        var bound = RowOverhead + meanings.Length + stats.Length + Bound(key) + Bound(onyomi) + Bound(kunyomi) + Bound(tags) + Bound(title);
+                        if (!Spend(bound))
                         {
                             return;
                         }
@@ -721,14 +807,14 @@ public sealed class DictionaryQuery
                         _writer.WriteStartObject();
                         _writer.WriteNumber("index", itemIndex);
                         _writer.WriteString("character", key);
-                        WriteField("onyomi", reader.GetString(1));
-                        WriteField("kunyomi", reader.GetString(2));
-                        WriteField("tags", reader.GetString(3));
+                        WriteField("onyomi", onyomi);
+                        WriteField("kunyomi", kunyomi);
+                        WriteField("tags", tags);
                         _writer.WritePropertyName("definitions");
                         _writer.WriteRawValue(meanings, skipInputValidation: true);
                         _writer.WritePropertyName("stats");
                         _writer.WriteRawValue(stats, skipInputValidation: true);
-                        _writer.WriteString("dictionary", _titles[reader.GetInt64(0)]);
+                        _writer.WriteString("dictionary", title);
                         _writer.WriteEndObject();
                     }
                 }
@@ -743,7 +829,7 @@ public sealed class DictionaryQuery
             using var command = Prepare("SELECT name, category, sort_order, notes, score FROM tag_meta WHERE dict_id = $dict AND name = $name ORDER BY id LIMIT 1", "$dict", "$name");
             foreach (var item in operation.GetProperty("items").EnumerateArray())
             {
-                if (OutOfTime() || !Spend(128))
+                if (OutOfTime())
                 {
                     return;
                 }
@@ -752,7 +838,11 @@ public sealed class DictionaryQuery
                 var name = Text(item.GetProperty("query"));
                 if (title is null || name is null || !_ids.TryGetValue(title, out var dictionaryId))
                 {
-                    _writer.WriteNullValue();
+                    if (!WriteMissingTag())
+                    {
+                        return;
+                    }
+
                     continue;
                 }
 
@@ -761,16 +851,28 @@ public sealed class DictionaryQuery
                 using var reader = command.ExecuteReader();
                 if (!reader.Read())
                 {
-                    _writer.WriteNullValue();
+                    if (!WriteMissingTag())
+                    {
+                        return;
+                    }
+
                     continue;
                 }
 
                 // A tag from an index's obsolete tagMeta can lack any field but its name.
-                _writer.WriteStartObject();
-                _writer.WriteString("name", reader.GetString(0));
-                if (!reader.IsDBNull(1))
+                var tagName = reader.GetString(0);
+                var category = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var notes = reader.IsDBNull(3) ? null : reader.GetString(3);
+                if (!Spend(RowOverhead + Bound(tagName) + Bound(category) + Bound(notes) + Bound(title)))
                 {
-                    _writer.WriteString("category", reader.GetString(1));
+                    return;
+                }
+
+                _writer.WriteStartObject();
+                _writer.WriteString("name", tagName);
+                if (category is not null)
+                {
+                    _writer.WriteString("category", category);
                 }
 
                 if (!reader.IsDBNull(2))
@@ -778,9 +880,9 @@ public sealed class DictionaryQuery
                     _writer.WriteNumber("order", reader.GetDouble(2));
                 }
 
-                if (!reader.IsDBNull(3))
+                if (notes is not null)
                 {
-                    _writer.WriteString("notes", reader.GetString(3));
+                    _writer.WriteString("notes", notes);
                 }
 
                 if (!reader.IsDBNull(4))
@@ -791,6 +893,17 @@ public sealed class DictionaryQuery
                 _writer.WriteString("dictionary", title);
                 _writer.WriteEndObject();
             }
+        }
+
+        private bool WriteMissingTag()
+        {
+            if (!Spend(RowOverhead))
+            {
+                return false;
+            }
+
+            _writer.WriteNullValue();
+            return true;
         }
     }
 

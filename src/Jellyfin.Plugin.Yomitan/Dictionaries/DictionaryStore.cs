@@ -86,6 +86,9 @@ public sealed class DictionaryStore
         CREATE UNIQUE INDEX media_path ON media(dict_id, path);
         """;
 
+    /// <summary>What a WAL file is cut back to when it starts over, in bytes.</summary>
+    private const long JournalSizeLimit = 64 * 1024 * 1024;
+
     private static readonly string[] RowTables = ["terms", "term_meta", "kanji", "kanji_meta", "tag_meta", "media"];
 
     private readonly string _readWrite;
@@ -249,7 +252,15 @@ public sealed class DictionaryStore
     internal static void Compact(SqliteConnection connection)
     {
         Execute(connection, "PRAGMA incremental_vacuum");
+        Checkpoint(connection);
+    }
 
+    /// <summary>
+    /// Folds the WAL into the database and truncates it. A transaction that rolled back leaves the pages it spilled in
+    /// the WAL, which for an import is up to the size of the dictionary, and nothing else would give that space back.
+    /// </summary>
+    internal static void Checkpoint(SqliteConnection connection)
+    {
         // Readers can hold this back, so it is best effort. The next write's auto-checkpoint catches up.
         Execute(connection, "PRAGMA busy_timeout = 5000");
         Execute(connection, "PRAGMA wal_checkpoint(TRUNCATE)");
@@ -260,7 +271,10 @@ public sealed class DictionaryStore
     {
         var connection = new SqliteConnection(_readWrite);
         connection.Open();
-        Execute(connection, "PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;");
+
+        // The size limit applies whenever a checkpoint starts the WAL over, including the automatic ones, in case a
+        // checkpoint of ours was held back by a reader.
+        Execute(connection, $"PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536; PRAGMA journal_size_limit = {JournalSizeLimit};");
         return connection;
     }
 
@@ -311,6 +325,9 @@ public sealed class DictionaryStore
         {
             throw new InvalidOperationException($"{DatabasePath} has schema version {version}; this plugin expects {SchemaVersion}");
         }
+
+        // A large WAL left behind, by a crash or by an import that failed under 0.1.0, is given back here.
+        Checkpoint(connection);
     }
 }
 

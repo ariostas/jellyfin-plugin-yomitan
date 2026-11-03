@@ -33,6 +33,16 @@ export class NativeSubtitles {
         return track?.label.includes(MANAGED_TRACK) ? track : null;
     }
 
+    /** Reading the offset is what can fail if jellyfin-web changes, and the line has to come back regardless. */
+    _offsetShift() {
+        try {
+            return this._getOffset() - this._offsetOnCues;
+        } catch (error) {
+            console.warn('[yomitan] cannot read the subtitle offset, so the cues stay where they are:', error);
+            return 0;
+        }
+    }
+
     hide() {
         if (!document.getElementById(STYLE_ID)) {
             const style = document.createElement('style');
@@ -68,7 +78,7 @@ export class NativeSubtitles {
         document.documentElement.removeAttribute(HIDDEN_ATTRIBUTE);
         const track = this._primaryTrack();
         if (track?.mode === 'hidden') {
-            const shift = this._getOffset() - this._offsetOnCues;
+            const shift = this._offsetShift();
             if (shift !== 0) {
                 for (const cue of track.cues ?? []) {
                     cue.startTime -= shift;

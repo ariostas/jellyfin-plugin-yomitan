@@ -53,8 +53,13 @@ One query request is bounded so that it cannot do unbounded work:
 | `MaxItems` | 4096 lookups across all operations | 400 `too_many_items` |
 | `MaxDictionaries` | 256 titles in one operation | 400 `too_many_dictionaries` |
 | `MaxRows` | 20000 rows across all operations | Results cut short, `truncated: true` |
-| `MaxResponseBytes` | 33554432, roughly, counted on glossary and meta data | Results cut short, `truncated: true` |
-| `MaxDurationMs` | 5000 | Results cut short, `truncated: true` |
+| `MaxResponseBytes` | 33554432, counted on everything written, the first `getDictionaryInfo` included | Results cut short, `truncated: true` |
+| `MaxDurationMs` | 5000, including a statement that is running | Results cut short, `truncated: true` |
+
+The first `getDictionaryInfo` of a request always answers in full, whatever the budget, and what it writes counts against
+`MaxResponseBytes` like anything else. A second one in the same request only answers if it fits. Rows stop being read,
+as well as written, once the budget is spent, so a key with thousands of large glossaries costs no more than the
+budget.
 
 Imports are bounded by these defaults. An admin can change them in the plugin's XML configuration, under the same
 names:
@@ -361,7 +366,8 @@ The body is `{"operations": [...]}`. The response is `{"results": [...]}` with o
 | `truncated` | boolean | The request's budget ran out, so `rows` is incomplete |
 
 If any operation is malformed the whole request fails with 400 and nothing runs. A title that is not installed is not
-an error: it matches nothing, as in Yomitan. The same goes for an empty list.
+an error: it matches nothing, as in Yomitan. The same goes for an empty list. An empty string in a `prefix` or `suffix`
+`findTermsBulk` is malformed, `invalid_request`: it would match every row.
 
 Each operation names a method of Yomitan's `DictionaryDatabase` and takes that method's arguments. The `Translator`'s
 calls map one to one:
@@ -394,8 +400,8 @@ What an adapter has to do besides the batching:
 - **Rows come in Yomitan's order**: by item, then the expression index before the reading index, then by key, then by
   `id`. A `truncated` result is a subset of the full one, taken from the start of that order.
 - **`truncated` is sticky.** Once the budget has run out, later operations answer with `truncated: true` and no rows.
-  `getDictionaryInfo` still answers in full. On `truncated`, split the batch and retry, or accept partial results. A
-  `prefix` or `suffix` match of a very short string is what usually gets here, since it can match most of a
+  The first `getDictionaryInfo` still answers in full. On `truncated`, split the batch and retry, or accept partial
+  results. A `prefix` or `suffix` match of a very short string is what usually gets here, since it can match most of a
   dictionary.
 
 A batch of every operation:
@@ -1082,6 +1088,9 @@ The rows are Yomitan's. `tests/e2e/parity.spec.mjs` diffs them against the real 
   does not here. Dictionaries containing lone surrogates are refused with `invalid_bank`.
 - **A prefix search also matches past U+FFFF on the key's next character**, where IndexedDB's upper bound would stop.
   U+FFFF is a noncharacter, so this has no effect on real text.
+- **A `prefix` or `suffix` search for an empty string is refused**, where Yomitan would return the whole dictionary.
+  The `Translator` never asks for one: it only searches by prefix or suffix for a wildcard search, with `deinflect`
+  off, and returns early when the text is empty.
 - **Dictionaries with `v1` term banks follow the schema as written.** Its `maxItems` forbids any definitions, and this
   is true of Yomitan too, so format 1 rows carry no glossary in practice.
 

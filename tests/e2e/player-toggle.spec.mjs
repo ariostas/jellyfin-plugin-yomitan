@@ -129,6 +129,47 @@ test.describe('it is only there when it can do something', () => {
     });
 });
 
+// User scripts and other plugins wrap Events.trigger too. One that does after the plugin used to make every playback event
+// set the plugin up again, with a new button, toggle and engine each time.
+test('another script wrapping Events.trigger later still gets one of everything', async ({page}) => {
+    await page.addInitScript(() => {
+        window.setups = 0;
+        const timer = setInterval(() => {
+            const state = window.__yomitanJellyfin;
+            if (!state || typeof window.Events?.trigger !== 'function') {
+                return;
+            }
+
+            clearInterval(timer);
+            let manager;
+            Object.defineProperty(state, 'playbackManager', {
+                get: () => manager,
+                set: (value) => {
+                    window.setups += 1;
+                    manager = value;
+                },
+            });
+            // The plugin wraps it as soon as Events exists, so this comes after.
+            setTimeout(() => {
+                window.wrappedBeforePlayback = window.setups === 0;
+                const theirs = window.Events.trigger;
+                window.Events.trigger = function (...args) {
+                    return theirs.apply(this, args);
+                };
+            }, 1000);
+        }, 50);
+    });
+    await logIn(page);
+    expect(await page.evaluate(() => window.wrappedBeforePlayback)).toBe(true);
+    await play(page, movies.LookupSample, {subtitleStreamIndex: 0, minimumTime: 2});
+    await page.waitForFunction(() => window.__yomitanJellyfin.playback?.session?.state === 'active');
+    await showLine(page, LINES.plain);
+
+    expect(await page.evaluate(() => window.setups)).toBe(1);
+    await expect(page.locator(BUTTON)).toHaveCount(1);
+    expect(await pressed(page)).toBe('true');
+});
+
 test('with no dictionaries, turning it on says so, and leaves the subtitles alone', async ({page, isMobile}) => {
     await deleteAll(admin);
     try {

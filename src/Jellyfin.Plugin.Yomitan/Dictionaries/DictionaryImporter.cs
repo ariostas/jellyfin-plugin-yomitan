@@ -186,71 +186,97 @@ public sealed partial class DictionaryImporter
 
             using (_connection = _importer._store.OpenWriter())
             {
-                using (_transaction = _connection.BeginTransaction())
+                var compacted = false;
+                try
                 {
-                    PrepareStatements();
-                    var previous = DictionaryStore.FindId(_connection, _transaction, _title);
-                    if (previous is { } previousId)
+                    using (_transaction = _connection.BeginTransaction())
                     {
-                        _phase = "replacing";
+                        PrepareStatements();
+                        var previous = DictionaryStore.FindId(_connection, _transaction, _title);
+                        if (previous is { } previousId)
+                        {
+                            _phase = "replacing";
+                            Report();
+                            DictionaryStore.DeleteRows(_connection, _transaction, previousId);
+                        }
+
+                        var usedBefore = DictionaryStore.UsedBytes(_connection, _transaction);
+                        var summary = CreateSummary(index, version);
+                        InsertDictionary();
+
+                        _phase = "terms";
+                        foreach (var file in termFiles)
+                        {
+                            ImportBank(file, termSchema, v1 ? InsertTermV1 : InsertTermV3);
+                        }
+
+                        _phase = "termMeta";
+                        foreach (var file in termMetaFiles)
+                        {
+                            ImportBank(file, termMetaSchema, InsertTermMeta);
+                        }
+
+                        _phase = "kanji";
+                        foreach (var file in kanjiFiles)
+                        {
+                            ImportBank(file, kanjiSchema, v1 ? InsertKanjiV1 : InsertKanjiV3);
+                        }
+
+                        _phase = "kanjiMeta";
+                        foreach (var file in kanjiMetaFiles)
+                        {
+                            ImportBank(file, kanjiMetaSchema, InsertKanjiMeta);
+                        }
+
+                        _phase = "tags";
+                        foreach (var file in tagFiles)
+                        {
+                            ImportBank(file, tagSchema, InsertTag);
+
+                            // As in Yomitan, the obsolete index tagMeta is added once per tag bank, so with no tag
+                            // banks it is dropped.
+                            InsertIndexTags(index);
+                        }
+
+                        summary["styles"] = ReadStyles();
+                        summary["counts"] = CountsToJson();
+
+                        _phase = "committing";
                         Report();
-                        DictionaryStore.DeleteRows(_connection, _transaction, previousId);
+                        var size = DictionaryStore.UsedBytes(_connection, _transaction) - usedBefore;
+                        UpdateDictionary(summary, size);
+                        DisposeStatements();
+                        _transaction.Commit();
+
+                        _phase = "compacting";
+                        Report();
+                        DictionaryStore.Compact(_connection);
+                        compacted = true;
+
+                        return new ImportResult(_title, index["revision"]!.GetValue<string>(), previous.HasValue, _counts, size);
                     }
-
-                    var usedBefore = DictionaryStore.UsedBytes(_connection, _transaction);
-                    var summary = CreateSummary(index, version);
-                    InsertDictionary();
-
-                    _phase = "terms";
-                    foreach (var file in termFiles)
-                    {
-                        ImportBank(file, termSchema, v1 ? InsertTermV1 : InsertTermV3);
-                    }
-
-                    _phase = "termMeta";
-                    foreach (var file in termMetaFiles)
-                    {
-                        ImportBank(file, termMetaSchema, InsertTermMeta);
-                    }
-
-                    _phase = "kanji";
-                    foreach (var file in kanjiFiles)
-                    {
-                        ImportBank(file, kanjiSchema, v1 ? InsertKanjiV1 : InsertKanjiV3);
-                    }
-
-                    _phase = "kanjiMeta";
-                    foreach (var file in kanjiMetaFiles)
-                    {
-                        ImportBank(file, kanjiMetaSchema, InsertKanjiMeta);
-                    }
-
-                    _phase = "tags";
-                    foreach (var file in tagFiles)
-                    {
-                        ImportBank(file, tagSchema, InsertTag);
-
-                        // As in Yomitan, the obsolete index tagMeta is added once per tag bank, so with no tag
-                        // banks it is dropped.
-                        InsertIndexTags(index);
-                    }
-
-                    summary["styles"] = ReadStyles();
-                    summary["counts"] = CountsToJson();
-
-                    _phase = "committing";
-                    Report();
-                    var size = DictionaryStore.UsedBytes(_connection, _transaction) - usedBefore;
-                    UpdateDictionary(summary, size);
-                    DisposeStatements();
-                    _transaction.Commit();
-
-                    _phase = "compacting";
-                    Report();
-                    DictionaryStore.Compact(_connection);
-
-                    return new ImportResult(_title, index["revision"]!.GetValue<string>(), previous.HasValue, _counts, size);
                 }
+                finally
+                {
+                    // A failed import has rolled back by now, and left every page it spilled in the WAL.
+                    if (!compacted)
+                    {
+                        CheckpointAfterFailure();
+                    }
+                }
+            }
+        }
+
+        /// <summary>Gives the WAL back, without hiding why the import failed if that fails too.</summary>
+        private void CheckpointAfterFailure()
+        {
+            try
+            {
+                DictionaryStore.Checkpoint(_connection);
+            }
+            catch (SqliteException)
+            {
+                // The next import or the next start tries again.
             }
         }
 
