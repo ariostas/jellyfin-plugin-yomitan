@@ -1,5 +1,5 @@
 // A finger, in real playback, with Chromium's touch input: a phone's viewport and user agent, and jellyfin-web in its
-// mobile layout. This is emulation, and says nothing about a real phone. README.md lists what only a phone can show.
+// mobile layout. This is emulation, and says nothing about a real phone. CONTRIBUTING.md lists what only a phone can show.
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, logIn} from '../lib/jellyfin.mjs';
 import {

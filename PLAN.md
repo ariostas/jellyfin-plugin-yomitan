@@ -28,7 +28,7 @@ CI and the release workflow have only run here, by hand.
 
 Still open, and left for people with the devices or the accounts:
 
-- The checks on a real phone, in the Android app and on a real TV, which [README.md](README.md) lists.
+- The checks on a real phone, in the Android app and on a real TV, which [CONTRIBUTING.md](CONTRIBUTING.md#checks-on-real-devices) lists.
 - Safari itself, as opposed to Playwright's WebKit.
 - Lookup times on real hardware and a mobile network. The numbers below are from localhost.
 - webOS, which loads the server's jellyfin-web and so may work, untried. Tizen needs a rebuilt app.
@@ -214,7 +214,7 @@ seeks, track switches and transcoding.
 - Test Firefox and WebKit through Playwright, and Android Chrome emulation. The Android app is not available here.
 
 **Exit:** the desktop and mobile flows work in automated tests, and normal playback is unchanged when the feature
-is off. Real phone and Android app checks are left for the user, listed in the README.
+is off. Real phone and Android app checks are left for the user, listed in CONTRIBUTING.md.
 
 **Phase 4 result:** done, with these changes to the plan. The overlay moved out of the video's container to a layer on the
 body, because jellyfin-web's page covers the container and nothing inside it can be hit. `enabled` defaulted to on until
