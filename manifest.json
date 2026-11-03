@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "guid": "95f2db49-f966-44b9-a94f-4784792339fb",
+    "name": "Yomitan",
+    "overview": "Look up words in Japanese subtitles with Yomitan",
+    "description": "Splits Japanese subtitles into words during playback in jellyfin-web, and shows Yomitan's popup for the word under the pointer, a finger or a remote. Dictionaries are uploaded once by an admin and stored on the server. Each user turns it on with a button in the player.",
+    "owner": "ariostas",
+    "category": "Subtitles",
+    "imageUrl": null,
+    "versions": [
+      {
+        "version": "0.1.0.0",
+        "changelog": "- First release.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/ariostas/jellyfin-plugin-yomitan/releases/download/v0.1.0/yomitan_0.1.0.0.zip",
+        "checksum": "cd3fd1c96e55ae991f31a446b36b129b",
+        "timestamp": "2026-11-03T01:07:27Z"
+      }
+    ]
+  }
+]
