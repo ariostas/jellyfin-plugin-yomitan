@@ -65,7 +65,13 @@ function compare(actual, expected, path, loose) {
         for (const key of Object.keys(expected)) {
             const next = `${path}.${key}`;
             if (volatile.has(key) || (loose && racy.has(key))) {
-                expect(['null', kindOf(expected[key])], next).toContain(kindOf(actual[key]));
+                const kinds = ['null', kindOf(expected[key])];
+                // The worker can start the job before its first response is written, so the example's null is a time.
+                if (loose && key === 'startedAt') {
+                    kinds.push('string');
+                }
+
+                expect(kinds, next).toContain(kindOf(actual[key]));
             } else {
                 compare(actual[key], expected[key], next, loose);
             }
