@@ -1,5 +1,5 @@
 {
-  "name": "jellyfin-yomitan-tests",
+  "name": "jellyfin-plugin-yomitan-tests",
   "private": true,
   "license": "GPL-3.0-only",
   "type": "module",

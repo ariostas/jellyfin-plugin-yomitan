@@ -23,7 +23,7 @@ const licenseBanner = `/*
  * Bundles Yomitan's language and display code, its display templates, stylesheets and icons, Copyright (C) 2023-2026
  * Yomitan Authors, Copyright (C) 2016-2022 Yomichan Authors, under the GNU General Public License version 3 or later.
  * See https://github.com/yomidevs/yomitan.
- * This program comes with ABSOLUTELY NO WARRANTY. Source: https://github.com/ariostas/jellyfin-yomitan, with Yomitan in
+ * This program comes with ABSOLUTELY NO WARRANTY. Source: https://github.com/ariostas/jellyfin-plugin-yomitan, with Yomitan in
  * third_party/yomitan. Bundles kanji-processor, Copyright (c) 2024 Lyroxide, under the MIT License. See
  * THIRD-PARTY-NOTICES.md there.
  */`;

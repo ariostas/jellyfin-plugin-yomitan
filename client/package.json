@@ -1,5 +1,5 @@
 {
-  "name": "jellyfin-yomitan-client",
+  "name": "jellyfin-plugin-yomitan-client",
   "private": true,
   "license": "GPL-3.0-only",
   "type": "module",

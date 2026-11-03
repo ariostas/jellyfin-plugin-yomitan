@@ -20,7 +20,7 @@ need another build, which has not been tested, and 10.11 has had no release sinc
 1. In the dashboard, open **Plugins**, then **Manage Repositories**, and add a **New Repository**: any name, and this URL:
 
    ```text
-   https://raw.githubusercontent.com/ariostas/jellyfin-yomitan/main/manifest.json
+   https://raw.githubusercontent.com/ariostas/jellyfin-plugin-yomitan/main/manifest.json
    ```
 
 2. Back in **Plugins**, choose **Available**, open **Yomitan** and press **Install**.
@@ -30,7 +30,7 @@ New releases arrive through the same repository: Jellyfin's **Update Plugins** t
 the next restart. The plugin's page under **Plugins** also lists every version, to install one by hand.
 
 Without the repository, unzip a release's `yomitan_<version>.zip` from
-[GitHub](https://github.com/ariostas/jellyfin-yomitan/releases) into a folder named `Yomitan_<version>` in the server's
+[GitHub](https://github.com/ariostas/jellyfin-plugin-yomitan/releases) into a folder named `Yomitan_<version>` in the server's
 `plugins` directory, and restart.
 
 ## Setting it up
