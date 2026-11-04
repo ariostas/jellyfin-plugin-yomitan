@@ -68,7 +68,10 @@ with the same variables when done.
 - **`Microsoft.Data.Sqlite` stays on the version the oldest supported Jellyfin ships.** See the comment in the csproj. A
   newer one fails to load on 12.0.
 - **The version is in `VERSION` only**, and `manifest.json` is written by the release workflow through
-  `scripts/lib/manifest.mjs`. Do not edit it by hand.
+  `scripts/lib/manifest.mjs`. Do not edit it by hand: CI refuses a manifest that lost or changed a version any commit of
+  it had.
+- **A release must rebuild its zip byte for byte**, so the .NET SDK image in `scripts/lib/common.sh` is pinned by
+  digest, and the oldest server image is there too, as `JF_IMAGE=oldest`. Change them on purpose, not in passing.
 
 ## Conventions
 

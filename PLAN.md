@@ -285,16 +285,19 @@ See [docs/client.md](docs/client.md#settings).
   ships, 10.0.11, or the first query fails there.
 - **The manifest is `manifest.json` on main**, read through `raw.githubusercontent.com`, in the format of
   `MediaBrowser.Model.Updates.PackageInfo`, with the MD5 of the zip, which is what `InstallationManager` checks.
-  `scripts/lib/manifest.mjs` writes it, and refuses to lose or change a version it had. The release workflow adds each
-  version after the GitHub release is out, so the manifest never points at a missing file.
+  `scripts/lib/manifest.mjs` writes it, and CI and the release refuse a manifest that lost or changed a version any
+  commit of it had. The release workflow adds each version after the GitHub release is out, and takes the checksum from
+  the zip downloaded from the release, so the manifest never points at a missing file or at another build.
 - **The install through the catalogue is a test**, `tests/e2e/catalogue.spec.mjs`: a server without the plugin, a
   repository added in the dashboard, the install, a restart from the dashboard, and an upgrade to a second build that keeps
   the dictionaries and the settings. Each release runs it as an upgrade from the newest version in the manifest.
 - **The zip is exactly what the server needs**: the DLL, with its debug symbols inside, `meta.json`, the license and
-  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The same commit gives the same zip, byte for byte.
-- **A smoke set of 14 tests**, tagged `@smoke`, runs on every push in about two minutes: injection, the engine loading, the
-  overlay, a popup by real mouse, the whole key flow, the button in the player, the dashboard page with an upload, and the
-  settings changed on one device and seen in playback on another.
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The same commit gives the same zip, byte for byte, with the SDK
+  image pinned by digest in `scripts/lib/common.sh` and GitHub's URLs for the repository and the submodule, which
+  SourceLink writes into the debug symbols. A rebuild of 0.1.0 matched its release.
+- **A smoke set of 14 tests**, tagged `@smoke`, runs on every push to main and pull request in about two minutes:
+  injection, the engine loading, the overlay, a popup by real mouse, the whole key flow, the button in the player, the
+  dashboard page with an upload, and the settings changed on one device and seen in playback on another.
 - **The variant servers run only what depends on them.** BaseUrl reruns the specs whose requests are built from it, and
   File Transformation the ones that read `index.html`. `scripts/test-matrix.sh` names them and says why.
 - **Found on the way:** jellyfin-web keeps a track's cues when another is chosen while the first is still downloading, so

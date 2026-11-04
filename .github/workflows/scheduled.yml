@@ -1,7 +1,8 @@
-# Every week, the whole suite against the newest Jellyfin image and the pinned one in scripts/lib/common.sh, and the
-# compat set against the oldest supported. The plugin leans on jellyfin-web's DOM, which is not an API (PLAN.md lists
-# what), so a failure on latest alone is the early warning that a release has changed it. One job per browser and image
-# keeps each well inside GitHub's six hours.
+# Every week, the whole suite against the newest Jellyfin image and the pinned one in scripts/lib/common.sh, the compat
+# set against the oldest supported, and the specs that take real dictionaries. The plugin leans on jellyfin-web's DOM,
+# which is not an API (PLAN.md lists what), so a failure on latest alone is the early warning that a release has changed
+# it. One job per browser and image keeps each well inside GitHub's six hours. GitHub turns the schedule off after 60
+# days with no commit, and the release workflow refuses to publish while it is off.
 name: Scheduled
 
 on:
@@ -87,7 +88,7 @@ jobs:
           browsers: chromium
       - name: The smoke set and playback on the oldest
         env:
-          JF_IMAGE: docker.io/jellyfin/jellyfin:12.0.20260908-012347
+          JF_IMAGE: oldest
         run: scripts/test-matrix.sh compat
       - name: Install from a repository on the newest
         if: ${{ !cancelled() }}
@@ -98,5 +99,28 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: results-oldest-and-catalogue
+          path: tests/test-results
+          retention-days: 14
+
+  # JMdict, JMnedict and KANJIDIC from one dated release, which scripts/real-dicts.sh downloads and checks: the
+  # segmenter's hand-checked corpus, the parity with Yomitan's own importer and Translator, and the popup on real
+  # entries.
+  real-dictionaries:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          browsers: chromium
+      - name: Real dictionaries
+        run: scripts/test-matrix.sh real
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-real-dictionaries
           path: tests/test-results
           retention-days: 14

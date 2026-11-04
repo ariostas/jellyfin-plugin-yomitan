@@ -2,16 +2,19 @@
 // (MediaBrowser.Model/Updates). A server installs a version only if the MD5 of the zip it downloads matches `checksum`,
 // and lists it only if its own version is at least `targetAbi`.
 //
-//   node manifest.mjs check <manifest>
+//   node manifest.mjs check <manifest> [--history]
 //   node manifest.mjs add <manifest> <zip> <source url> [changelog file]
 //   node manifest.mjs latest <manifest>     prints the newest version's source URL and checksum, if there is one
 //
-// `add` takes everything but the URL, the changelog and the time from the meta.json in the zip, and writes the manifest
-// back only if every version it had is still there, unchanged. Adding a version that is already there with the same zip
-// changes nothing, so a release can be run again, while the same version with another zip is refused.
+// `add` takes everything but the URL, the changelog and the time from the meta.json in the zip. Adding a version that
+// is already there with the same zip changes nothing, so a release can be run again, while the same version with
+// another zip is refused. `check --history` also refuses a manifest that has lost or changed any version that the file
+// had in a commit before, along the first parents of HEAD, which is what main has offered. It needs the whole history.
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {relative} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 
 const PACKAGE_FIELDS = ['guid', 'name', 'overview', 'description', 'owner', 'category'];
@@ -102,17 +105,31 @@ export function addVersion(manifest, {meta, checksum, sourceUrl, changelog, time
     const next = structuredClone(manifest);
     next.splice(index === -1 ? next.length : index, index === -1 ? 0 : 1, plugin);
     checkManifest(next);
+    return next;
+}
 
-    // Nothing that was there before may go or change.
-    const before = manifest.flatMap(({guid, versions}) => versions.map((version) => ({guid, version})));
-    for (const {guid, version} of before) {
-        const kept = next.find((candidate) => candidate.guid === guid)?.versions.find((candidate) => candidate.version === version.version);
-        if (!isDeepStrictEqual(kept, version)) {
-            throw new Error(`Adding ${meta.version} would have lost or changed ${version.version}`);
+/** Throws unless every version in `earlier` is still in `manifest`, unchanged: a server may have installed it. */
+export function keepsEveryVersion(earlier, manifest) {
+    for (const {guid, name, versions} of earlier) {
+        for (const version of versions) {
+            const kept = manifest.find((plugin) => plugin.guid === guid)?.versions.find((candidate) => candidate.version === version.version);
+            if (!isDeepStrictEqual(kept, version)) {
+                throw new Error(`${name} ${version.version} has been lost or changed`);
+            }
         }
     }
+}
 
-    return next;
+/** Every manifest.json at `path` committed along the first parents of HEAD, newest first. */
+export function committedManifests(path) {
+    const git = (...args) => execFileSync('git', args, {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+    // A shallow clone has only the last commit, which would make the check compare the manifest with itself.
+    if (git('rev-parse', '--is-shallow-repository').trim() !== 'false') {
+        throw new Error('The history check needs the whole history, and this clone is shallow');
+    }
+
+    return git('log', '--first-parent', '--format=%H', '--', path).split('\n').filter(Boolean)
+        .map((commit) => ({commit, manifest: JSON.parse(git('show', `${commit}:./${relative('.', path)}`))}));
 }
 
 export const md5 = (buffer) => createHash('md5').update(buffer).digest('hex');
@@ -124,12 +141,32 @@ export function readMeta(zip) {
 
 export const writeManifest = (path, manifest) => writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 
-if (import.meta.main) {
+// Not import.meta.main, which is undefined before Node 22.18, so the commands would do nothing and exit 0.
+const isMain = (() => {
+    try {
+        return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+    } catch {
+        return false;
+    }
+})();
+
+if (isMain) {
     const [command, path, zip, sourceUrl, changelogFile] = process.argv.slice(2);
     const manifest = JSON.parse(readFileSync(path, 'utf8'));
-    if (command === 'check') {
+    const history = zip === '--history';
+    if (command === 'check' && (history || zip === undefined)) {
         checkManifest(manifest);
-        console.log(`${path} is valid: ${manifest.map(({name, versions}) => `${name} ${versions.length} versions`).join(', ') || 'empty'}`);
+        const earlier = history ? committedManifests(path) : [];
+        for (const {commit, manifest: before} of earlier) {
+            try {
+                keepsEveryVersion(before, manifest);
+            } catch (error) {
+                throw new Error(`${error.message} since ${commit.slice(0, 12)}`, {cause: error});
+            }
+        }
+
+        const kept = history ? `, and keeps every version of ${earlier.length} commits` : '';
+        console.log(`${path} is valid${kept}: ${manifest.map(({name, versions}) => `${name} ${versions.length} versions`).join(', ') || 'empty'}`);
     } else if (command === 'latest') {
         checkManifest(manifest);
         const newest = manifest[0]?.versions[0];
@@ -147,7 +184,7 @@ if (import.meta.main) {
         writeManifest(path, next);
         console.log(next === manifest ? `${path} already has this zip` : `Added ${readMeta(zip).version} to ${path}`);
     } else {
-        console.error('Usage: manifest.mjs check <manifest> | add <manifest> <zip> <source url> [changelog file] | latest <manifest>');
+        console.error('Usage: manifest.mjs check <manifest> [--history] | add <manifest> <zip> <source url> [changelog file] | latest <manifest>');
         process.exit(2);
     }
 }

@@ -7,16 +7,18 @@
 #   ft-outer           with File Transformation outside our middleware, the specs that read index.html, in Chromium
 #   ft-inner           the same with File Transformation inside it
 #   ft-inner-base-url  the same with BaseUrl /jf as well
-#   smoke              the specs tagged @smoke, in Chromium: what CI runs on every push
+#   smoke              the specs tagged @smoke, in Chromium: what CI runs on main and pull requests
 #   compat             the smoke set and every playback spec, in Chromium: what proves a server version
 #   catalogue          installs the plugin from a repository through the dashboard, on a server without it, and
 #                      upgrades it if given two zips. See tests/e2e/catalogue.spec.mjs
+#   real               the specs that take real dictionaries, in Chromium, with those scripts/real-dicts.sh downloads
 #
 # Environment:
 #   JF_MATRIX_PORT      the first port (default 18110)
 #   JF_MATRIX_BROWSERS  the Playwright projects of plain (default chromium firefox webkit android-chrome)
 #   JF_IMAGE            the server image, as for scripts/dev.sh
 #   YOMITAN_CATALOGUE_ZIPS  for catalogue, the zips to install, oldest first (default the one scripts/package.sh makes)
+#   YOMITAN_REAL_DICTS  for real, a directory of the dictionaries (default the one scripts/real-dicts.sh fills)
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -31,6 +33,7 @@ declare -A scenarios=(
     [smoke]=""
     [compat]=""
     [catalogue]="JF_INSTALL=0"
+    [real]=""
 )
 order=(plain base-url ft-outer ft-inner ft-inner-base-url)
 read -r -a browsers <<<"${JF_MATRIX_BROWSERS:-chromium firefox webkit android-chrome}"
@@ -45,6 +48,9 @@ base_url_specs=(smoke injection playback popup user-page admin-page)
 
 # File Transformation only rewrites index.html, so the specs that read it, through the server and in a browser.
 ft_specs=(smoke injection file-transformation)
+
+# The specs that take YOMITAN_REAL_DICTS. They skip what needs it when it is not set, so real always sets it.
+real_specs=(parity-real segmentation-real popup-real dictionary-choice admin-page)
 
 # Runs Playwright for one scenario, in tests/. It runs as the condition of an if, where set -e does nothing.
 playwright_for() {
@@ -62,6 +68,11 @@ playwright_for() {
         catalogue)
             YOMITAN_CATALOGUE_ZIPS=${YOMITAN_CATALOGUE_ZIPS:-$("$root/scripts/package.sh" | head -n 1)} \
                 npx playwright test --project=chromium catalogue.spec.mjs
+            ;;
+        real)
+            local dicts
+            dicts=${YOMITAN_REAL_DICTS:-$("$root/scripts/real-dicts.sh")} || return 1
+            YOMITAN_REAL_DICTS=$dicts npx playwright test --project=chromium "${real_specs[@]/%/.spec.mjs}"
             ;;
     esac
 }

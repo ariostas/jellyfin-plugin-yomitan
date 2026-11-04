@@ -15,7 +15,7 @@
 #                    the real plugin names give) or inner. The server orders plugins by manifest name.
 #   JF_EXTRA_MEDIA   a directory of real media, as a third library. See tests/e2e/real-film.spec.mjs (default none)
 #   JF_INSTALL       0 starts the server without the plugin, to install it from a repository (default 1)
-#   JF_IMAGE         server image
+#   JF_IMAGE         server image, or oldest for the oldest supported (default the pinned one in scripts/lib/common.sh)
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

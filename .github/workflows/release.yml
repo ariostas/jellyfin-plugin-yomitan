@@ -1,8 +1,10 @@
-# On a version tag: all of CI, and the compat set on the oldest supported server. Then the zip, an install of it from a
-# repository through the dashboard (an upgrade from the previous release when there is one), the GitHub release, and last
-# the new version in manifest.json on main, which is the repository URL users add. Nothing is published unless everything
-# before it passed, and the manifest only ever gains a version: scripts/lib/manifest.mjs refuses to write one that lost
-# or changed any.
+# On a version tag that is on main: all of CI, and the compat set on the oldest supported server. Then the zip, an
+# install of it from a repository through the dashboard (an upgrade from the previous release when there is one), the
+# GitHub release, and last the new version in manifest.json on main, which is the repository URL users add. Nothing is
+# published unless every test passed, and the manifest only ever gains a version: scripts/lib/manifest.mjs refuses one
+# that lost or changed any that main had. The release goes public just before the manifest is pushed, since a manifest
+# that pointed at a draft would offer a zip no one can download. If that push fails, the release is out but not offered,
+# and running the failed jobs again finishes it.
 name: Release
 
 on:
@@ -34,9 +36,11 @@ jobs:
         with:
           browsers: chromium
 
-      - name: The tag is the version in VERSION
+      - name: The tag is the version in VERSION, on main
         run: |
           [[ $GITHUB_REF_NAME == "v$(cat VERSION)" ]] || { echo "Tag $GITHUB_REF_NAME, but VERSION says $(cat VERSION)"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main ||
+            { echo "Tag $GITHUB_REF_NAME is not on main. Push main first, or both with git push --atomic"; exit 1; }
 
       - name: Build and package
         run: |
@@ -100,7 +104,7 @@ jobs:
           browsers: chromium
       - name: The smoke set and playback on the oldest
         env:
-          JF_IMAGE: docker.io/jellyfin/jellyfin:12.0.20260908-012347
+          JF_IMAGE: oldest
         run: scripts/test-matrix.sh compat
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -109,8 +113,31 @@ jobs:
           path: tests/test-results
           retention-days: 14
 
+  # GitHub turns a schedule off after 60 days with no commit, and says nothing, so the weekly run on the newest Jellyfin
+  # would stop warning anyone. A release is when that matters.
+  weekly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: The weekly run is on
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          state=$(gh api "repos/$GH_REPO/actions/workflows/scheduled.yml" --jq .state)
+          [[ $state == active ]] ||
+            { echo "The Scheduled workflow is $state. Turn it on with gh workflow enable scheduled.yml"; exit 1; }
+          last=$(gh run list --workflow scheduled.yml --branch main --limit 1 --json conclusion,createdAt \
+            --jq '.[0] // empty | "\(.conclusion) \(.createdAt)"')
+          echo "Last weekly run: ${last:-none}"
+          if [[ $last != success* ]] || (($(date +%s) - $(date -d "${last#* }" +%s) > 8 * 86400)); then
+            echo "::warning::The last weekly run on main did not pass this week: ${last:-there is none}"
+          fi
+
   publish:
-    needs: [package, oldest]
+    needs: [package, oldest, weekly]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -119,6 +146,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          # The manifest is checked against every commit of it.
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -127,34 +156,55 @@ jobs:
           name: release
           path: release
 
-      # A draft until the zip is up, so no one sees a release without it. Running the job again skips what is done.
-      - name: GitHub release
+      # A draft until the zip is up, so no one sees a release without it. Running the job again skips what is done. A
+      # release that is already there, from an earlier run or made by hand, must hold this run's zip, byte for byte: the
+      # manifest takes its checksum from the zip on the release, and that must be the one the tests installed.
+      - name: GitHub release, as a draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          name=$(basename release/yomitan_*.zip)
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" release/yomitan_*.zip --draft --verify-tag \
+            gh release create "$GITHUB_REF_NAME" "release/$name" --draft --verify-tag \
               --title "$GITHUB_REF_NAME" --notes-file release/notes.md
           fi
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          mkdir published
+          gh release download "$GITHUB_REF_NAME" --pattern "$name" --dir published ||
+            { echo "Release $GITHUB_REF_NAME has no $name. Upload it or delete the release, then run again"; exit 1; }
+          cmp "release/$name" "published/$name" ||
+            { echo "The $name on release $GITHUB_REF_NAME is not the one this run built and tested"; exit 1; }
 
-      # Added to main as it is at the moment of the push, so a commit that landed meanwhile is kept, and tried again if
-      # main moves in between.
-      - name: Manifest on main
+      # The commit is made on main as it is at the moment of the push, so a commit that landed meanwhile is kept, and
+      # made again if main moves in between. The first is made before the release goes public, so that only the push can
+      # fail after it. The workflow's token starts no workflow, so CI never runs on this commit: the history check here
+      # is the one CI would make.
+      - name: Public, and in the manifest on main
         env:
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          zip=$(ls release/yomitan_*.zip)
-          url="https://github.com/$REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$zip")"
+          name=$(basename release/yomitan_*.zip)
+          url="https://github.com/$REPOSITORY/releases/download/$GITHUB_REF_NAME/$name"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
+          commit() {
             git fetch --quiet origin main
             git reset --quiet --hard origin/main
-            node scripts/lib/manifest.mjs add manifest.json "$zip" "$url" release/notes.md
-            git diff --quiet manifest.json && exit 0
-            git commit --quiet -m "chore: add ${GITHUB_REF_NAME#v} to the plugin manifest" manifest.json
+            node scripts/lib/manifest.mjs add manifest.json "published/$name" "$url" release/notes.md
+            node scripts/lib/manifest.mjs check manifest.json --history
+            git diff --quiet manifest.json ||
+              git commit --quiet -m "chore: add ${GITHUB_REF_NAME#v} to the plugin manifest" manifest.json
+          }
+          commit
+
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          # What a server will download, from where the manifest says.
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors --output downloaded.zip "$url"
+          cmp "published/$name" downloaded.zip
+
+          for attempt in 1 2 3; do
             git push --quiet origin HEAD:main && exit 0
             echo "main moved, attempt $attempt"
+            commit
           done
           exit 1

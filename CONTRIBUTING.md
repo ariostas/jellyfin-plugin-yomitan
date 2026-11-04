@@ -26,7 +26,12 @@ JF_NAME=jf-other JF_PORT=18200 JF_BASE_URL=/jf JF_WITH_FT=1 scripts/dev.sh up
 
 The server image is pinned in `scripts/lib/common.sh`, and `JF_IMAGE` picks another. The oldest supported server is
 `JellyfinVersion` in the csproj: the plugin is compiled against it, and the manifest offers it to that version and newer.
-Keep `Microsoft.Data.Sqlite` there on the version that server ships, as the comment beside it says.
+`JF_IMAGE=oldest` is the image of that version that the release and the weekly run test on, also in
+`scripts/lib/common.sh`, and refuses to start if the two disagree. Keep `Microsoft.Data.Sqlite` in the csproj on the
+version that server ships, as the comment beside it says.
+
+The .NET SDK image is pinned by digest there too, since the compiler's version goes into the DLL: another SDK makes
+another zip from the same commit. Move it to a newer SDK on purpose, in a commit of its own.
 
 The client build fails if a bundle grows past its gzipped budget in `client/build.mjs`, or takes in an npm package that has
 no notice in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
@@ -51,11 +56,11 @@ scripts/test-matrix.sh              # everything, on fresh servers, with BaseUrl
 
 `scripts/test-matrix.sh` takes scenario names, and its header lists them. With none it runs every spec in all four
 Playwright projects on a plain server, and in Chromium the specs that depend on a `BaseUrl` or on File Transformation on
-servers with those. `JF_MATRIX_BROWSERS` narrows the browsers. Three more are not in the default run: `smoke`, the specs
-tagged `@smoke`, which CI runs on every push; `compat`, the smoke set and every playback spec, which is what proves a
-server version, as in `JF_IMAGE=docker.io/jellyfin/jellyfin:12.0.20260908-012347 scripts/test-matrix.sh compat`; and
-`catalogue`, which starts a server without the plugin, adds a repository in the dashboard, installs the plugin from the
-catalogue and restarts, and with two zips in `YOMITAN_CATALOGUE_ZIPS` upgrades too.
+servers with those. `JF_MATRIX_BROWSERS` narrows the browsers. Four more are not in the default run: `smoke`, the specs
+tagged `@smoke`, which CI runs on main and every pull request; `compat`, the smoke set and every playback spec, which is
+what proves a server version, as in `JF_IMAGE=oldest scripts/test-matrix.sh compat`; `catalogue`, which starts a server
+without the plugin, adds a repository in the dashboard, installs the plugin from the catalogue and restarts, and with
+two zips in `YOMITAN_CATALOGUE_ZIPS` upgrades too; and `real`, the specs below that take real dictionaries.
 
 The Playwright projects are `chromium`, `firefox`, `webkit` and `android-chrome`. The specs that use real input and real
 playback run on all four, and the rest on Chromium, since they test the server. Install the browsers with
@@ -79,10 +84,13 @@ cd tests && npm ci && npx playwright test
 
 `tests/e2e/parity.spec.mjs` diffs the server against Yomitan's real importer, database and `Translator` in Chromium,
 using the test data in the submodule. To run the same comparison on real dictionaries, point it at a directory holding
-`JMdict_english.zip`, `JMnedict.zip` and `KANJIDIC_english.zip`, which are not in this repository:
+`JMdict_english.zip`, `JMnedict.zip` and `KANJIDIC_english.zip`, which are not in this repository.
+`scripts/real-dicts.sh` downloads them from one dated release of [JMdict for
+Yomitan](https://github.com/yomidevs/jmdict-yomitan) into `.dev/real-dicts` and checks their SHA-256, and
+`scripts/test-matrix.sh real` does that and runs every spec below that takes them, in Chromium:
 
 ```sh
-cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test e2e/parity-real.spec.mjs
+cd tests && YOMITAN_REAL_DICTS=$(../scripts/real-dicts.sh) npx playwright test e2e/parity-real.spec.mjs
 ```
 
 The same directory drives the dashboard page and the choice of dictionaries with real ones, in
@@ -158,19 +166,33 @@ subtitle track, a dictionary installed and the feature on, on a TV browser that 
 
 The workflows in `.github/workflows` call the same scripts, so each job is one command here.
 
-- **CI**, on every push and pull request: the hooks in `.pre-commit-config.yaml`, the manifest tooling, the build with its
-  size and license checks, the unit tests, the zip, and the smoke set on the pinned server.
+- **CI**, on every push to main and every pull request, and by hand on any branch: the hooks in
+  `.pre-commit-config.yaml`, the manifest tooling, `manifest.json` against every commit of it, the build with its size
+  and license checks, the unit tests, the zip, and the smoke set on the pinned server. A push to another branch runs
+  nothing until it has a pull request.
 - **Scheduled**, weekly and by hand: every spec in each browser against the pinned image and `latest`, one job each, the
-  BaseUrl and File Transformation variants against both, the compat set against 12.0, and the install from a repository
-  against `latest`.
-- **Release**, on a tag `v<version>`: all of CI, the zip, the install of that zip from a repository through the dashboard,
-  as an upgrade from the newest release in the manifest, then the GitHub release, and last the new version in
-  `manifest.json` on main. A failure anywhere stops it before anything is published, and the manifest tooling refuses to
-  write a manifest that has lost or changed a version.
+  BaseUrl and File Transformation variants against both, the compat set against 12.0, the install from a repository
+  against `latest`, and `scripts/test-matrix.sh real` with the dictionaries `scripts/real-dicts.sh` pins. GitHub turns a
+  schedule off after 60 days with no commit, without telling anyone. A release refuses to publish while it is off, and
+  warns when its last run did not pass this week. Turn it back on with `gh workflow enable scheduled.yml`.
+- **Release**, on a tag `v<version>` whose commit is on main: all of CI, the compat set on the oldest server, the zip,
+  the install of that zip from a repository through the dashboard, as an upgrade from the newest release in the
+  manifest, then the GitHub release, and last the new version in `manifest.json` on main.
 
-The real dictionaries are not downloaded in CI. Their licenses would allow it, but JMdict for Yomitan is rebuilt daily, so
-a failure could come from the dictionary and not from Jellyfin, which is what the scheduled run is there to notice. The
-specs that use them are measurements to read, not checks.
+A failed test stops the release before anything is published. The publish job then works in this order, so that each
+step only starts once everything before it holds:
+
+1. A draft release with the zip, or the release that is already there. Its zip must be this run's, byte for byte, since
+   the manifest takes its checksum from the zip on the release. A release with no zip, such as one made by hand, stops
+   it.
+2. The manifest commit, on main as it is: refused if `manifest.json` has lost or changed a version that any commit of it
+   had. This is the check CI makes, since the workflow's token pushes a commit that starts no workflow.
+3. The release goes public, and the zip is downloaded from the URL the manifest gives and compared once more.
+4. The push to main, made again on top of main if main moved.
+
+Only the push can fail after the release is public. Then the release is out but the repository does not offer it, and
+running the failed jobs again finishes it with the same zip. A whole new run builds the zip again, which only works
+because the build is reproducible: if it is not, step 1 stops it and says so.
 
 ## Releasing
 
@@ -181,8 +203,10 @@ sees it with a fourth part, `.0`.
 echo 0.2.0 > VERSION
 git commit -am "chore: release 0.2.0"
 git tag v0.2.0
-git push origin main v0.2.0
+git push --atomic origin main v0.2.0
 ```
 
-The release workflow does the rest. It pushes `manifest.json` to main with the workflow's own token, so main must accept
-pushes from GitHub Actions.
+`--atomic` pushes both or neither, and the release refuses a tag whose commit is not on main. The release workflow does
+the rest. It pushes `manifest.json` to main with the workflow's own token, so main must accept pushes from GitHub
+Actions. Push one release tag at a time: releases run one after another, and GitHub keeps only one waiting, so a third
+tag pushed while one runs and another waits cancels the waiting one, which then has to be run again by hand.
