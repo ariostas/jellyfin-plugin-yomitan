@@ -53,6 +53,8 @@ export class PlaybackSession {
         this._animationFrame = 0;
         this._pending = [];
         this._segmenting = false;
+        /** Whether the video is fullscreen on its own, where nothing of the page shows. */
+        this._videoAlone = false;
 
         /** `idle`, `active` or `inactive`. Inactive means Jellyfin's subtitles are showing. */
         this.state = 'idle';
@@ -153,7 +155,8 @@ export class PlaybackSession {
             pointer: this._input,
             video: this._video,
             settings: this._settings,
-            cues: () => this.cues,
+            // Nothing to walk while none of it can be seen.
+            cues: () => (this._videoAlone ? [] : this.cues),
             wordsOf: (cueId) => this.words.get(cueId),
             signal,
         });
@@ -168,8 +171,14 @@ export class PlaybackSession {
         }
 
         this._video.addEventListener('play', this._startAnimation, {signal});
+        const followFullscreen = () => this._safely(() => this._followFullscreen());
+        document.addEventListener('fullscreenchange', followFullscreen, {signal});
+        // An iPhone's own player, which has no event on the document.
+        this._video.addEventListener('webkitbeginfullscreen', followFullscreen, {signal});
+        this._video.addEventListener('webkitendfullscreen', followFullscreen, {signal});
         this._emit('active', {cues});
         this._render();
+        this._followFullscreen();
         this._startAnimation();
     }
 
@@ -177,6 +186,7 @@ export class PlaybackSession {
     poll() {
         if (this.state === 'active') {
             this._safely(() => {
+                this._followFullscreen();
                 this._native.enforce();
                 this._overlay.setBelowSecondary(this._playback.hasSecondarySubtitles());
                 this._followOsd();
@@ -194,6 +204,29 @@ export class PlaybackSession {
             work();
         } catch (error) {
             this._fail(error);
+        }
+    }
+
+    /**
+     * The video can go fullscreen by itself, without the page: on an iPhone, which has no other fullscreen, and wherever
+     * something asks for the video element alone. Nothing the plugin draws can show there, so Jellyfin's line comes back
+     * until it is over, as if the plugin were off.
+     */
+    _followFullscreen() {
+        const alone = document.fullscreenElement === this._video || this._video.webkitDisplayingFullscreen === true;
+        if (alone === this._videoAlone) {
+            return;
+        }
+
+        this._videoAlone = alone;
+        this._layer.element.hidden = alone;
+        if (alone) {
+            this.lookup.close('gone');
+            this._native.restore();
+        } else {
+            this._native.hide();
+            this._shownKey = null;
+            this._render();
         }
     }
 

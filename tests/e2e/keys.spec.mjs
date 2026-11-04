@@ -39,12 +39,18 @@ const LAYOUTS = [
 
 const TV_ON_A_PHONE = 'A phone has no TV layout worth testing. The same code runs in the desktop layout here.';
 
-async function start(page, {tv = false, line = LINES.plain} = {}) {
+/**
+ * Left and Right enter word mode too, which is the default in the TV layout and a choice anywhere else. Most of this spec
+ * walks with them, so outside the TV layout it makes that choice.
+ */
+const ARROWS_ENTER = {enabled: true, upOnlyEntry: false};
+
+async function start(page, {tv = false, line = LINES.plain, settings = tv ? {enabled: true} : ARROWS_ENTER} = {}) {
     if (tv) {
         await useTvLayout(page);
     }
 
-    await logIn(page);
+    await logIn(page, {settings});
     const sessionId = await startLookupFilm(page);
     await parkMouse(page);
     await showLine(page, line);
@@ -300,7 +306,7 @@ test.describe('words and lines', () => {
     });
 
     test('with dialogue and a sign, it starts in the dialogue, and Left reaches the sign above', async ({page}) => {
-        await logIn(page);
+        await logIn(page, {settings: ARROWS_ENTER});
         await play(page, movies.TypesetSample, {subtitleStreamIndex: 2, minimumTime: 0.2});
         await expectTrack(page, {state: 'active', codec: 'ass'});
         await parkMouse(page);
@@ -888,6 +894,27 @@ for (const {name, tv, use} of LAYOUTS) {
             await expectSameAsJellyfin(page, [{prepare: slider, keys: arrows, after: SLIDER_DELAY}]);
         });
 
+        test('until the user chooses, Left and Right enter in the TV layout, and elsewhere stay Jellyfin\'s', async ({page}) => {
+            await start(page, {tv, settings: {enabled: true}});
+            if (tv) {
+                await setPlayer(page, {at: LINE, paused: true});
+                await page.keyboard.press('ArrowLeft');
+                await expectCursor(page, '猫');
+                return;
+            }
+
+            // Pausing and pressing Left to hear a line again, with the line on screen, rewinds, as it does with the plugin off.
+            const paused = () => setPlayer(page, {at: LINE, paused: true});
+            const buttons = () => setPlayer(page, {at: LINE, paused: true, osd: true});
+            await expectSameAsJellyfin(page, [{prepare: paused, keys: ['ArrowLeft', 'ArrowRight']}, {prepare: buttons, keys: ['ArrowLeft', 'ArrowRight']}]);
+
+            await setPlayer(page, {at: LINE, paused: true});
+            await page.keyboard.press('ArrowUp');
+            await expectCursor(page, '猫');
+            await page.keyboard.press('ArrowRight');
+            await expectCursor(page, 'が');
+        });
+
         test('Up-only: Left and Right stay Jellyfin\'s until Up enters', async ({page}) => {
             await start(page, {tv});
             await setUpOnly(page, true);
@@ -949,9 +976,9 @@ test.describe('Back in the TV layout, outside word mode, is still Jellyfin\'s', 
 });
 
 test.describe('the setting', () => {
-    test('is off by default, and stored like the others', async ({page}) => {
+    test('is not chosen by default, and stored like the others', async ({page}) => {
         await logIn(page);
-        expect(await page.evaluate(() => window.__yomitanJellyfin.settings.get('upOnlyEntry'))).toBe(false);
+        expect(await page.evaluate(() => window.__yomitanJellyfin.settings.get('upOnlyEntry'))).toBeNull();
         await page.evaluate(() => window.__yomitanJellyfin.settings.set('upOnlyEntry', true));
         await page.reload();
         await page.waitForFunction(() => window.__yomitanJellyfin?.settings.get('upOnlyEntry') === true);

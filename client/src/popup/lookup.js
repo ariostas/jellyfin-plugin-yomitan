@@ -126,7 +126,12 @@ export class WordLookup extends EventTarget {
         }
     }
 
-    async _show(text) {
+    /**
+     * @param {string} text
+     * @param {boolean} [fromLink] Whether it is a link followed inside the popup. A word on screen that finds nothing
+     *   closes it, but a link that does stays where it was, and says so, since there is no way back to the entry it was in.
+     */
+    async _show(text, fromLink = false) {
         const ticket = this._ticket + 1;
         this._ticket = ticket;
         try {
@@ -136,11 +141,16 @@ export class WordLookup extends EventTarget {
             }
 
             if (entries.length === 0 && kanji.length === 0) {
-                this.close('miss');
+                if (fromLink && this.isOpen) {
+                    this._popup.note(`Nothing found for ${text}`);
+                } else {
+                    this.close('miss');
+                }
+
                 return false;
             }
 
-            this._render(entries, kanji);
+            this._render(entries, kanji, text);
             return true;
         } catch (error) {
             if (ticket === this._ticket) {
@@ -162,10 +172,10 @@ export class WordLookup extends EventTarget {
         return {entries: dictionaryEntries.slice(0, MAX_TERM_ENTRIES), kanji};
     }
 
-    _render(entries, kanji) {
+    _render(entries, kanji, text) {
         this._popup ??= new Popup(this._container);
         // A link inside an entry opens that entry here, with the highlight staying on the word that led there.
-        this._renderer ??= new EntryRenderer(this._apiClient, (query) => this._show(query));
+        this._renderer ??= new EntryRenderer(this._apiClient, (query) => this._show(query, true));
         const dictionaries = this._engine.dictionaries;
         this._renderer.release();
         const nodes = this._renderer.render(entries, kanji, dictionaries);
@@ -175,7 +185,7 @@ export class WordLookup extends EventTarget {
             return;
         }
 
-        this._popup.show(nodes, this._renderer.dictionaryStyles(dictionaries), anchor, this._osd());
+        this._popup.show(nodes, this._renderer.dictionaryStyles(dictionaries), anchor, this._osd(), text);
         this._renderer.loadImages(this._popup.root);
     }
 

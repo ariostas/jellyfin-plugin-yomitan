@@ -11,6 +11,14 @@ import {PlaybackSession} from './session.js';
 const POLL_INTERVAL_MS = 250;
 
 const VIDEO_SELECTOR = 'video.htmlvideoplayer';
+
+/** What a session's `problem` means, for the button in the OSD to say. Here, since the loader on every page stays small. */
+const PROBLEMS = Object.freeze({
+    none: 'Yomitan has no dictionaries yet, so subtitles stay as they are. An administrator can add them in the dashboard, under Yomitan.',
+    disabled: 'All your Yomitan dictionaries are turned off, so subtitles stay as they are. Settings, Yomitan has the list.',
+    'no-terms': 'The Yomitan dictionaries you have on hold no words, so subtitles stay as they are. Settings, Yomitan has the list.',
+    failed: 'Yomitan could not start on this track, so subtitles stay as they are.',
+});
 const DICTIONARY_SETTINGS = new Set(['dictionaryOrder', 'disabledDictionaries']);
 
 /** What a session needs to know about the current playback, read fresh each time. */
@@ -69,6 +77,7 @@ export class PlaybackController extends EventTarget {
         super();
         this.playbackManager = playbackManager;
         this.settings = settings;
+        this.problems = PROBLEMS;
         this._events = events;
         this._view = null;
         this._timer = 0;

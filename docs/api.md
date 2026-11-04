@@ -923,13 +923,18 @@ nobody can name another user, and an admin cannot either. An API key belongs to 
 | `enabled` | boolean | `false` | |
 | `hoverDelayMs` | integer | 200 | 0 to 5000 |
 | `hoverGraceMs` | integer | 300 | 0 to 5000 |
-| `upOnlyEntry` | boolean | `false` | |
+| `upOnlyEntry` | boolean or `null` | `null` | `null` is no choice yet |
 | `fontScale` | integer | 100 | 50 to 300, in percent |
 | `dictionaryOrder` | array of titles | `[]` | At most 256, each 1 to 4096 characters, no duplicates |
 | `disabledDictionaries` | array of titles | `[]` | The same |
+| `introSeen` | boolean | `false` | |
 
 [client.md](client.md#settings) says what each one does. A title in a list does not have to be installed, since another
 admin can delete a dictionary while someone's page is open. One that is not installed means nothing.
+
+`upOnlyEntry` is `null` until the user chooses, and the client then goes by the layout. 0.1.0 stored `false` for everyone
+who saved anything, as its default, so the first start of a newer plugin makes a stored `false` into `null`, once. A
+stored `true` was a choice, and stays.
 
 `MaxRequestBytes` for this API is 1048576, and past that the answer is 413 `limit_exceeded`.
 
@@ -953,10 +958,11 @@ Cache-Control: no-store
     "enabled": false,
     "hoverDelayMs": 200,
     "hoverGraceMs": 300,
-    "upOnlyEntry": false,
+    "upOnlyEntry": null,
     "fontScale": 100,
     "dictionaryOrder": [],
-    "disabledDictionaries": []
+    "disabledDictionaries": [],
+    "introSeen": false
   }
 }
 ```
@@ -989,12 +995,13 @@ Cache-Control: no-store
     "enabled": true,
     "hoverDelayMs": 200,
     "hoverGraceMs": 300,
-    "upOnlyEntry": false,
+    "upOnlyEntry": null,
     "fontScale": 120,
     "dictionaryOrder": [],
     "disabledDictionaries": [
       "JMnedict"
-    ]
+    ],
+    "introSeen": false
   }
 }
 ```

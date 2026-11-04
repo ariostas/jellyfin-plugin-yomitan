@@ -124,7 +124,8 @@ for (const [name, viewport, tv] of [['the desktop layout', {width: 1920, height:
 
         await start(page, LINES.plain);
         await pauseVideo(page);
-        await page.keyboard.press('ArrowRight');
+        // Up starts in either layout, whatever the user chose.
+        await page.keyboard.press('ArrowUp');
         await expectCursor(page, '昨日');
         await page.keyboard.press('ArrowRight');
         await page.keyboard.press('ArrowRight');

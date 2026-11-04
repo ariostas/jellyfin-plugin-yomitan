@@ -50,7 +50,7 @@ test('a new user has the defaults, through the one store the page has', async ({
     await expect.poll(() => page.evaluate(() => window.__yomitanJellyfin.settings.userId)).toBe(user.id);
     const values = await page.evaluate(() => {
         const {settings} = window.__yomitanJellyfin;
-        return Object.fromEntries(['enabled', 'hoverDelayMs', 'hoverGraceMs', 'upOnlyEntry', 'fontScale', 'dictionaryOrder', 'disabledDictionaries'].map((name) => [name, settings.get(name)]));
+        return Object.fromEntries(['enabled', 'hoverDelayMs', 'hoverGraceMs', 'upOnlyEntry', 'fontScale', 'dictionaryOrder', 'disabledDictionaries', 'introSeen'].map((name) => [name, settings.get(name)]));
     });
     expect(values).toEqual(await readSettings(user));
     expect(values).toEqual(defaultSettings);

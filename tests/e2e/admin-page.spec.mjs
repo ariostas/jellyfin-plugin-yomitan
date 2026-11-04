@@ -72,6 +72,14 @@ test('the page links to Yomitan\'s list of dictionaries, in a new tab', async ({
     expect(page.url()).toContain('#/configurationpage?name=yomitan');
 });
 
+test('it says that each user turns lookups on, and how', async ({page}) => {
+    await openPage(page);
+    const text = page.locator('#yomitanAdminPage .content-primary');
+    await expect(text).toContainText('Lookups are off for each user until they turn them on');
+    await expect(text).toContainText('文A button');
+    await expect(text).toContainText('Settings, Yomitan');
+});
+
 test('a file goes up, shows its progress, and joins the list with its numbers', {tag: '@smoke'}, async ({page}) => {
     await openPage(page);
     await expect(page.locator('#yomitanList')).toContainText('Nothing is installed');

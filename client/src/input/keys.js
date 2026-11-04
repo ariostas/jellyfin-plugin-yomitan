@@ -2,6 +2,8 @@
 // which is word mode. Only this file claims keys, and only those it uses at that moment: everything else, and everything
 // while the video plays, stays jellyfin-web's. What each key does is in docs/client.md.
 import {hideOsd, measureOsd} from '../playback/osd.js';
+import {entersWithUpOnly} from '../settings.js';
+import {isBack} from './back.js';
 
 /** jellyfin-web's own table in keyboardNavigation.js, by key code: keyboards, webOS, Tizen, Xbox and gamepads. */
 const COMMANDS = {
@@ -10,13 +12,7 @@ const COMMANDS = {
     38: 'up', 138: 'up', 203: 'up', 211: 'up',
     39: 'right', 141: 'right', 206: 'right', 213: 'right',
     40: 'down', 139: 'down', 204: 'down', 212: 'down',
-    // Backspace and BrowserBack are not Back to jellyfin-web, but a person pressing them in word mode means it, and the
-    // browser would act on the second. A remote's Back is 461 on webOS and 10009 on Tizen.
-    8: 'back', 27: 'back', 166: 'back', 196: 'back', 461: 'back', 10009: 'back',
 };
-
-/** The same keys on devices that give them a name and no usable code. */
-const NAMED_COMMANDS = {GoBack: 'back', BrowserBack: 'back'};
 
 /** Input types that do not take keys of their own. The rest do, like jellyfin-web's sliders. Its list. */
 const BUTTON_LIKE_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'reset', 'submit']);
@@ -26,8 +22,8 @@ const SCROLL_PIXELS = 120;
 /** How jellyfin-web asks whether one of its dialogs or menus is open. */
 const OPEN_DIALOG = '.dialogContainer .dialog.opened';
 
-function commandOf({keyCode, key, code}) {
-    return COMMANDS[keyCode] ?? NAMED_COMMANDS[key] ?? NAMED_COMMANDS[code];
+function commandOf(event) {
+    return isBack(event) ? 'back' : COMMANDS[event.keyCode];
 }
 
 /** @param {Element|null} element @returns {boolean} Whether this element has a use for the arrow keys itself. */
@@ -148,7 +144,7 @@ export class KeyInput {
     }
 
     _isEntry(command) {
-        return command === 'up' || (!this._settings.get('upOnlyEntry') && (command === 'left' || command === 'right'));
+        return command === 'up' || (!entersWithUpOnly(this._settings) && (command === 'left' || command === 'right'));
     }
 
     /** @returns {boolean} Whether there is, or may be about to be, a word to put the cursor on. */

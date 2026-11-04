@@ -136,7 +136,12 @@ test('numbers stay in bounds, and the remote setting saves', async ({page, isMob
     await delay.blur();
     await expect.poll(async () => (await readSettings(user)).hoverDelayMs).toBe(350);
 
+    // Not chosen yet, which outside the TV layout means on. Turning it off is a choice, for every device.
     const upOnly = page.locator('#yomitan-setting-upOnlyEntry');
+    await expect(upOnly).toBeChecked();
+    await click(upOnly, isMobile);
+    await expect.poll(async () => (await readSettings(user)).upOnlyEntry).toBe(false);
+    await expect(upOnly).not.toBeChecked();
     await click(upOnly, isMobile);
     await expect.poll(async () => (await readSettings(user)).upOnlyEntry).toBe(true);
 });
@@ -284,6 +289,8 @@ test('a remote can walk it', async ({page, isMobile}) => {
     await page.keyboard.press('Enter');
     await page.locator('.yomitan-settings').waitFor();
     await expect(page.locator('#yomitan-setting-enabled')).toBeFocused();
+    // Not chosen, and in the TV layout that means Left and Right enter too.
+    await expect(page.locator('#yomitan-setting-upOnlyEntry')).not.toBeChecked();
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => page.evaluate(() => document.activeElement?.closest('.yomitan-dictionary') !== null || document.activeElement?.id)).toBeTruthy();
     await page.keyboard.press('ArrowUp');

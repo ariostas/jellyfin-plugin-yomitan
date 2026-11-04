@@ -2,8 +2,9 @@
 // soon as it goes, however it goes.
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
 import {credentials, getMovies, logIn, play} from '../lib/jellyfin.mjs';
+import {expectPopup, isPaused, LINES, moveToWord, parkMouse, showLine} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
-import {expectTrack, jellyfinLine, nativeState, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
+import {expectTrack, jellyfinLine, nativeState, overlayText, setSubtitleTrack, setVideoTime, stopPlayback} from '../lib/player.mjs';
 import {expect, test} from '../lib/test.mjs';
 
 test.describe.configure({timeout: 120_000});
@@ -68,6 +69,63 @@ test('going to a track that is not Japanese brings Jellyfin\'s line back', async
     await expectTrack(page, {state: 'inactive', language: 'eng'});
     await expect.poll(() => nativeState(page)).toMatchObject({hiding: false, overlay: false});
     await expect.poll(() => jellyfinLine(page)).toBe('showing');
+});
+
+// An iPhone has no fullscreen for a page. Its fullscreen hands the video to iOS's own player, where nothing of the page
+// shows, so for that time the line goes back to Jellyfin.
+test.describe('the video fullscreen by itself', () => {
+    const layerShowing = (page) => page.evaluate(() => {
+        const layer = document.querySelector('.yomitan-layer');
+        return layer !== null && getComputedStyle(layer).display !== 'none';
+    });
+
+    test('as an iPhone does it: Jellyfin\'s line comes back, the popup goes, and the overlay returns after', async ({page, isMobile}) => {
+        await logIn(page);
+        await play(page, movies.LookupSample, {subtitleStreamIndex: LOOKUP_TRACK, minimumTime: 0.2});
+        await expectTrack(page, {state: 'active'});
+        await showLine(page, LINES.plain);
+        await expect.poll(() => jellyfinLine(page)).toBe('hidden');
+        if (!isMobile) {
+            await parkMouse(page);
+            await moveToWord(page, '学校');
+            await expectPopup(page, '学校');
+        }
+
+        // What WebKit on an iPhone does when the player's button calls webkitEnterFullscreen(). These browsers have no such
+        // player, so the test plays its part.
+        const iPhoneFullscreen = (on) => page.evaluate((value) => {
+            const video = document.querySelector('video.htmlvideoplayer');
+            Object.defineProperty(video, 'webkitDisplayingFullscreen', {configurable: true, get: () => value});
+            video.dispatchEvent(new Event(value ? 'webkitbeginfullscreen' : 'webkitendfullscreen'));
+        }, on);
+        await iPhoneFullscreen(true);
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
+        expect(await layerShowing(page)).toBe(false);
+        expect(await page.locator('.yomitan-popup:not([hidden])').count()).toBe(0);
+        await expect.poll(() => isPaused(page)).toBe(false);
+        expect(await page.evaluate(() => window.__yomitanJellyfin.playback.session.state)).toBe('active');
+
+        await iPhoneFullscreen(false);
+        await expect.poll(() => jellyfinLine(page)).toBe('hidden');
+        expect(await layerShowing(page)).toBe(true);
+        await showLine(page, LINES.plain);
+        expect(await overlayText(page)).toContain('昨日');
+    });
+
+    test('the same when the video element alone is the fullscreen element', async ({page}) => {
+        await logIn(page);
+        await play(page, movies.LookupSample, {subtitleStreamIndex: LOOKUP_TRACK, minimumTime: 0.2});
+        await expectTrack(page, {state: 'active'});
+        await expect.poll(() => jellyfinLine(page)).toBe('hidden');
+        const entered = await page.evaluate(() => document.querySelector('video.htmlvideoplayer').requestFullscreen().then(() => true, () => false));
+        test.skip(!entered, 'This browser has no fullscreen here.');
+
+        await expect.poll(() => jellyfinLine(page)).toBe('showing');
+        expect(await layerShowing(page)).toBe(false);
+        await page.evaluate(() => document.exitFullscreen());
+        await expect.poll(() => jellyfinLine(page)).toBe('hidden');
+        expect(await layerShowing(page)).toBe(true);
+    });
 });
 
 test.describe('the custom element', () => {

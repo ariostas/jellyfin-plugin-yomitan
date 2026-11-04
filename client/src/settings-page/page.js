@@ -5,7 +5,7 @@
 // It only ever talks to the settings store, apart from listing the dictionaries. Titles come from a zip anyone can
 // write, and only ever go on screen as text.
 import {orderDictionaries} from '../engine/dictionary-set.js';
-import {SETTING_BOUNDS} from '../settings.js';
+import {entersWithUpOnly, SETTING_BOUNDS} from '../settings.js';
 import {element, formatCount, formatSize, installStyle} from '../ui/dom.js';
 
 const CSS = `
@@ -88,15 +88,16 @@ const STATUS = {
     refused: 'The server refused that, so it went back to what it was.',
 };
 
-function checkbox(settings, name, text, help) {
+/** @param {() => boolean} [read] What the box shows, for a setting whose default is not a plain value. */
+function checkbox(settings, name, text, help, read = () => settings.get(name)) {
     const input = element('input', {
         type: 'checkbox',
         id: `yomitan-setting-${name}`,
-        checked: settings.get(name),
+        checked: read(),
         on: {change: () => settings.set(name, input.checked)},
     });
     const update = () => {
-        input.checked = settings.get(name);
+        input.checked = read();
     };
 
     return {
@@ -280,7 +281,13 @@ export function openSettingsPage(settings) {
     const controls = {
         enabled: checkbox(settings, 'enabled', 'Use Yomitan on Japanese subtitles', 'Replaces the line with plain text you can look words up in. Styled subtitles lose their styling while this is on. The button next to the subtitle button in the player does the same.'),
         fontScale: fontSizeField(settings),
-        upOnlyEntry: checkbox(settings, 'upOnlyEntry', 'Only Up starts walking the words', 'With a keyboard or a remote, while paused. It leaves Left and Right to the player\'s buttons.'),
+        upOnlyEntry: checkbox(
+            settings,
+            'upOnlyEntry',
+            'Only Up starts walking the words',
+            'With a keyboard or a remote, while paused. It leaves Left and Right to the player, to go back and forward. On unless you change it, apart from the TV layout.',
+            () => entersWithUpOnly(settings),
+        ),
         hoverDelayMs: numberField(settings, 'hoverDelayMs', 'How long the mouse rests on a word before it opens, in milliseconds'),
         hoverGraceMs: numberField(settings, 'hoverGraceMs', 'How long the popup stays after the mouse leaves it, in milliseconds'),
     };

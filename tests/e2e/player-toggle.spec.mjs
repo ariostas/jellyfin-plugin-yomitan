@@ -1,6 +1,6 @@
 // The button in the OSD. The feature is off by default, so this is where people meet it.
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
-import {credentials, getMovies, logIn, play, readSettings} from '../lib/jellyfin.mjs';
+import {credentials, getMovies, logIn, play, readSettings, server} from '../lib/jellyfin.mjs';
 import {expectCursor, inWordMode, useTvLayout} from '../lib/keys.mjs';
 import {isPaused, LINES, osdShowing, parkMouse, showLine} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
@@ -12,6 +12,7 @@ test.describe.configure({timeout: 120_000});
 /** As in playback.spec.mjs: external subtitles of TracksSample, in the order the server sorts them. */
 const TRACKS = {english: 0, chinese: 1, japanese: 2, untagged: 3};
 const BUTTON = '.btnYomitan';
+const NOTICE = '.yomitan-notice';
 
 let admin;
 let movies;
@@ -177,7 +178,10 @@ test('with no dictionaries, turning it on says so, and leaves the subtitles alon
         await press(page, isMobile);
         await expect(page.locator('.yomitan-notice')).toContainText('no dictionaries');
         expect(await pressed(page)).toBe('true');
-        await expect(page.locator(BUTTON)).toHaveAttribute('aria-label', /not working/);
+        // The label says why too, for a screen reader, and the tooltip for a mouse.
+        const label = 'Yomitan lookups: on, not working. Yomitan has no dictionaries yet, so subtitles stay as they are. An administrator can add them in the dashboard, under Yomitan.';
+        await expect(page.locator(BUTTON)).toHaveAttribute('aria-label', label);
+        await expect(page.locator(BUTTON)).toHaveAttribute('title', label);
         await expect.poll(() => jellyfinLine(page)).toBe('showing');
         expect(await page.locator('.yomitan-overlay').count()).toBe(0);
     } finally {
@@ -283,4 +287,118 @@ test('it opens and closes with the rest of the OSD, in the same row', async ({pa
     expect(row).toMatchObject({sameParent: true, next: true, top: 0});
     expect(row.width).toBeGreaterThanOrEqual(40);
     expect(row.right).toBeLessThanOrEqual(row.viewport);
+});
+
+test.describe('the first time, a notice says what the button is', () => {
+    const startNew = async (page) => {
+        await logIn(page, {settings: {enabled: false, introSeen: false}});
+        await play(page, movies.LookupSample, {subtitleStreamIndex: 0, minimumTime: 0.5});
+        await page.locator(BUTTON).waitFor({state: 'attached'});
+    };
+
+    const focusInNotice = (page) => page.evaluate(() => document.activeElement?.closest('.yomitan-notice') !== null);
+
+    test('it does not stop the video or take the focus, and Not now is for good, on every device', async ({page, browser, isMobile}) => {
+        await startNew(page);
+        const notice = page.locator(NOTICE);
+        await expect(notice).toContainText('文A');
+        expect(await isPaused(page)).toBe(false);
+        expect(await focusInNotice(page)).toBe(false);
+        expect(await jellyfinLine(page)).toBe('showing');
+
+        const notNow = notice.getByRole('button', {name: 'Not now'});
+        await (isMobile ? notNow.tap() : notNow.click());
+        await expect(notice).toHaveCount(0);
+        await expect.poll(async () => (await readSettings(credentials)).introSeen).toBe(true);
+        expect(await pressed(page)).toBe('false');
+        expect(await isPaused(page)).toBe(false);
+
+        // A browser that has never seen this user starts on the defaults, and waits for the server before it says anything.
+        const context = await browser.newContext({baseURL: `${server.url}/`});
+        const other = await context.newPage();
+        await logIn(other, {settings: null});
+        await play(other, movies.LookupSample, {subtitleStreamIndex: 0, minimumTime: 0.5});
+        await other.locator(BUTTON).waitFor({state: 'attached'});
+        await other.waitForTimeout(1500);
+        expect(await other.locator(NOTICE).count()).toBe(0);
+        await context.close();
+    });
+
+    test('Turn on turns it on, and what comes next is in the same live region', async ({page, isMobile}) => {
+        await deleteAll(admin);
+        try {
+            await startNew(page);
+            await expect(page.locator(NOTICE)).toContainText('文A');
+            await page.evaluate(() => {
+                window.theRegion = document.querySelector('[role=status].yomitan-notices');
+            });
+            const turnOn = page.locator(NOTICE).getByRole('button', {name: 'Turn on'});
+            await (isMobile ? turnOn.tap() : turnOn.click());
+            await expect(page.locator(NOTICE)).toContainText('no dictionaries');
+            expect(await page.evaluate(() => window.theRegion?.isConnected && document.querySelector('.yomitan-notice').parentElement === window.theRegion)).toBe(true);
+            expect(await pressed(page)).toBe('true');
+            await expect.poll(async () => (await readSettings(credentials)).introSeen).toBe(true);
+            expect((await readSettings(credentials)).enabled).toBe(true);
+        } finally {
+            await importArchive(admin, makeMiniDictionary());
+        }
+    });
+
+    test('the button in the OSD counts as having seen it', async ({page, isMobile}) => {
+        await startNew(page);
+        await expect(page.locator(NOTICE)).toContainText('文A');
+        await press(page, isMobile);
+        await page.waitForFunction(() => window.__yomitanJellyfin.playback?.session?.state === 'active');
+        await expect(page.locator(NOTICE)).toHaveCount(0);
+        await expect.poll(async () => (await readSettings(credentials)).introSeen).toBe(true);
+    });
+
+    test.describe('with a remote', () => {
+        test.use({viewport: {width: 1920, height: 1080}});
+        test.skip(({isMobile}) => isMobile, 'A phone has no keys.');
+        test.beforeEach(async ({page}) => {
+            await useTvLayout(page);
+        });
+
+        const onPlayer = (page) => page.evaluate(() => location.hash.startsWith('#/video'));
+
+        test('Up from the OSD reaches it, as jellyfin-web moves the focus, and OK presses it', async ({page}) => {
+            await startNew(page);
+            await expect(page.locator(NOTICE)).toContainText('文A');
+            await page.keyboard.press('Enter');
+            await expect.poll(() => osdShowing(page)).toBe(true);
+            await page.evaluate(() => document.querySelector('.btnYomitan').focus());
+            // The position slider is on the way.
+            for (let presses = 0; presses < 3 && !await focusInNotice(page); presses += 1) {
+                await page.keyboard.press('ArrowUp');
+            }
+
+            await expect(page.locator(NOTICE).getByRole('button', {name: 'Turn on'})).toBeFocused();
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(() => window.__yomitanJellyfin.playback?.session?.state === 'active');
+            await expect(page.locator(NOTICE)).toHaveCount(0);
+            expect(await onPlayer(page)).toBe(true);
+            await expect.poll(async () => (await readSettings(credentials)).introSeen).toBe(true);
+        });
+
+        test('Back closes it with the focus anywhere, and only it, even held down', async ({page}) => {
+            await startNew(page);
+            await expect(page.locator(NOTICE)).toContainText('文A');
+            await page.keyboard.down('Escape');
+            for (let repeat = 0; repeat < 3; repeat += 1) {
+                await page.keyboard.down('Escape');
+            }
+
+            await page.keyboard.up('Escape');
+            await expect(page.locator(NOTICE)).toHaveCount(0);
+            await page.waitForTimeout(500);
+            expect(await onPlayer(page)).toBe(true);
+            await expect.poll(async () => (await readSettings(credentials)).introSeen).toBe(true);
+
+            // From then on Back is jellyfin-web's again, which with the OSD gone leaves the player.
+            await expect.poll(() => osdShowing(page), {timeout: 8000}).toBe(false);
+            await page.keyboard.press('Escape');
+            await expect.poll(() => onPlayer(page)).toBe(false);
+        });
+    });
 });

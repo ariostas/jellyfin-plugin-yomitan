@@ -22,9 +22,10 @@ function load() {
     window.__yomitanJellyfin = state;
     console.info(`[yomitan] client ${__CLIENT_VERSION__} loaded`);
 
+    const loadSettingsPage = () => import(settingsPageUrl);
     const openSettings = async () => {
         try {
-            const {openSettingsPage} = await import(settingsPageUrl);
+            const {openSettingsPage} = await loadSettingsPage();
             openSettingsPage(settings);
         } catch (error) {
             console.warn('[yomitan] the settings page failed to load:', error);
@@ -60,7 +61,7 @@ function load() {
             }
         };
 
-        const toggle = new PlayerToggle({playbackManager, events, settings});
+        const toggle = new PlayerToggle({playbackManager, events, settings, loadIntro: loadSettingsPage});
         let started = false;
         const startEngine = async () => {
             if (started || !settings.get('enabled')) {

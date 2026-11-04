@@ -6,9 +6,9 @@ How the code that runs in jellyfin-web fits together. The server's side of the c
 
 | File | Loaded | Size | Holds |
 | --- | --- | --- | --- |
-| `client.js` | On every page, by the injected tag | About 5 KB compressed | `src/main.js`, the settings store, the OSD's button, the link to the settings page |
+| `client.js` | On every page, by the injected tag | About 5 KB compressed | `src/main.js`, the settings store, the OSD's button, notices, the link to the settings page |
 | `engine.js` | When a video starts with the feature on | About 400 KB, or 110 KB as Jellyfin compresses it | The Translator, the overlay, the popup and input |
-| `settings-page.js` | When someone opens their settings | About 10 KB | `src/settings-page/` |
+| `settings-page.js` | When someone opens their settings, or the first time the button in the player is there for them | About 10 KB | `src/settings-page/`, and the notice that introduces the button |
 | `yomitan-admin.js` | When an admin opens the dashboard page | About 10 KB | `src/admin/`. jellyfin-web imports this one |
 
 `client/build.mjs` builds them all. The content hashes of `engine.js` and `settings-page.js` are compiled into the loader,
@@ -29,9 +29,9 @@ player-toggle.js        the button in the OSD
 settings.js             the one settings store, created here and handed to the engine
 ui/
   dom.js                builds elements, and never from a string of markup
-  notice.js             a short message over whatever is on screen
+  notice.js             a short message over whatever is on screen, in one live region
   settings-link.js      the way to the settings page, in jellyfin-web's Settings
-settings-page/          a user's own settings
+settings-page/          a user's own settings, and the notice that introduces the button
 admin/                  the dashboard page: its markup, its script and its words for the API's errors
 engine-entry.js         the engine script's exports
 playback/
@@ -52,6 +52,7 @@ overlay.js              draws the current cues, and says which word an event hit
 input/
   pointer.js            mouse and touch
   keys.js               the keyboard and a remote: word mode
+  back.js               which keys are Back, for word mode and for notices
 popup/
   lookup.js             a word's popup, highlight and pause, as one thing
   popup.js              the shadow root, and fitting it on screen
@@ -91,16 +92,28 @@ settings.userId;      // Whose these are, or null with nobody signed in, when th
 | `enabled` | `false` | Off means the engine does not load, and playback is what jellyfin-web does alone. Takes effect at once |
 | `hoverDelayMs` | 200 | How long the mouse has to rest on a word before anything happens |
 | `hoverGraceMs` | 300 | How long the popup survives the mouse leaving it and the word |
-| `upOnlyEntry` | `false` | Only Up enters [word mode](#the-keyboard-and-a-remote), which leaves Left and Right to the OSD's buttons while paused |
+| `upOnlyEntry` | `null` | Only Up enters [word mode](#the-keyboard-and-a-remote), which leaves Left and Right to the OSD's buttons while paused. `null` until the user chooses: then it is on, apart from jellyfin-web's TV layout |
 | `fontScale` | 100 | The size of the lines, in percent of what fits the screen |
 | `dictionaryOrder` | `[]` | Titles in the order this user wants them. The rest follow in import order |
 | `disabledDictionaries` | `[]` | Titles this user has turned off. Anything else is on |
+| `introSeen` | `false` | Whether this user has closed or used [the notice](#the-button-in-the-player) that introduces the button |
 
 **Off by default**, as [PLAN.md](../PLAN.md)'s decision 4 says: the overlay replaces ASS styling with a plain line, so
-turning it on is a choice. A new user sees nothing of the plugin but the button in the OSD and the link in Settings.
+turning it on is a choice. A new user sees nothing of the plugin but the button in the OSD, the link in Settings, and once,
+the notice that says what the button is. The dashboard page says that each user turns it on. There is no server-wide
+default: the client starts every video on the settings it has before the server answers, so on a new device such a default
+would turn the feature on partway into the first video, and 0.1.0 stored every setting with every save, so "a user who
+has not chosen" could not be told apart from one who chose off.
+
+`upOnlyEntry` is `null` until the user chooses, and `entersWithUpOnly()` in `settings.js` reads that as on outside
+jellyfin-web's TV layout and off in it. On a desktop, Left on a paused video is how people go back to hear a line again, and
+taking it only while a line with a known word is on screen made the same key do two things. A remote's thumb rests on Left
+and Right, so the TV layout keeps them. The settings page shows what applies on that device, and any change there is a
+choice for every device.
 
 With it off, the loader stays on the page with two listeners on `window` (`viewshow` and `visibilitychange`) and three on
-`playbackManager`, and polls which track is selected while a video plays, for the button. The video and the document have
+`playbackManager`, and polls which track is selected while a video plays, for the button. The notice that introduces the
+button adds a `keydown` listener on `window`, for Back, which goes at the first key after it closes. The video and the document have
 the same listeners as with the plugin blocked outright, which `tests/e2e/settings.spec.mjs` counts. `GET /Yomitan/Settings`
 is its only request, apart from one `Stream.js` for a text track with no language tag, which only its text can
 decide.
@@ -157,8 +170,25 @@ decides this itself. It presses `enabled`, and everything else follows from that
 
 It is a plain `button` with the classes of its neighbours, so jellyfin-web's focus handling takes it as one more stop in
 the row, and a tap or Enter clicks it. If `.btnSubtitles` is not found, there is no button, and an error stops following
-until the next video. If `enabled` is on and the session reports a `problem`, the button turns amber, its label says so,
-and a notice says what is wrong.
+until the next video. If `enabled` is on and the session reports a `problem`, the button turns amber, its label and
+tooltip say what is wrong, in the words of a notice that says it too. Those words come from the engine, in
+`PROBLEMS` in `playback/controller.js`, apart from the engine not loading at all.
+
+**The first time** the button is there with `enabled` off and `introSeen` false, a notice says what the button does, with
+Turn on and Not now. It is `settings-page/intro.js`, in the settings page's script, which the loader only fetches then, so
+that the loader on every page stays small. Its tooltip never shows on a phone or a TV, and this is the only other way to learn of it. It waits
+for the settings to come back from the server first, so a new device does not show it again. Either button, Back, or the
+button in the OSD sets `introSeen`, on the server, so it follows the user. A notice nobody answers goes after 20 s, and can
+come back on a later page load, never twice on one. It does not pause or take the focus. A remote reaches its buttons
+as it does the OSD's, and Back while it shows closes it instead of leaving the player. With anything wrong, it does not
+show.
+
+**Notices** go in one `role=status` element that stays in the body once it exists, or in the fullscreen element, and only
+its contents change: screen readers announce a change inside a live region, and often miss one that is new. A notice
+takes no pointer events, apart from the intro's buttons. While the intro shows, it claims Back, on `window` before
+jellyfin-web, unless focus is in a text field or one of jellyfin-web's dialogs is open, and Back does what Not now does.
+It calls that directly, since in Firefox jellyfin-web drops a click on anything but where the last key went. A held Back's
+repeats stay claimed, so they do not go on to leave the player.
 
 ### The settings page
 
@@ -211,6 +241,14 @@ z-index 1150: over the page, the OSD (1 and up) and its app bar (1100), and unde
 (999998). It takes no pointer events itself. jellyfin-web makes the whole page fullscreen, so the layer is normally
 inside the fullscreen element already. If something else goes fullscreen, it moves in.
 
+**The video fullscreen by itself.** An iPhone has no fullscreen for a page: jellyfin-web plays with `playsinline`, inside
+the page, and its fullscreen button calls `webkitEnterFullscreen()` on the video, which hands it to iOS's own player. Nothing
+of the page shows there. The same goes for anything that makes the `<video>` itself the `fullscreenElement`. While that
+lasts, the session hides the layer, closes the popup and gives Jellyfin its line back, as if the plugin were off, and when
+it ends it takes the line again. It follows `fullscreenchange`, `webkitbeginfullscreen` and `webkitendfullscreen`, and
+checks `webkitDisplayingFullscreen` on its poll. On an iPad, jellyfin-web makes the page fullscreen, which keeps the layer.
+None of this has been on a real iPhone or iPad: it is from jellyfin-web's source and MDN.
+
 **The OSD.** The controls sit where a line goes, so the overlay moves clear of them while they show, using their
 real size. `session.js` follows `SHOW_VIDEO_OSD`, and its poll catches the rest. It leaves the line alone while a word is
 in use: the OSD hides by itself after 3 s, and a line that moved would take the word out from under the mouse.
@@ -253,6 +291,7 @@ item, aborts its own request and anything it has waiting, so the next one starts
 | Engine script fails to load | Logged, a notice says so, and the next start tries again |
 | Settings cannot be fetched | The cache holds, or the defaults, and nothing shows |
 | A setting cannot be saved | It applies here, a notice says so, and it is sent again |
+| The video goes fullscreen by itself, as on an iPhone | Overlay hidden and Jellyfin's line back, until it ends |
 | `Events` never appears | Logged at debug level, nothing else happens |
 
 ## Subtitles
@@ -371,7 +410,7 @@ keys in the TV layout at 1920x1080, in desktop browsers. The Android TV app has 
 | Key | Outside word mode | In word mode |
 | --- | --- | --- |
 | Enter | jellyfin-web's: pauses in the TV layout, and shows the OSD | Resumes. It presses nothing else, whatever has focus |
-| Left, Right | Paused: enters word mode. Playing: jellyfin-web's | Next or previous word with an entry |
+| Left, Right | Paused, without Up only: enters word mode. Otherwise jellyfin-web's | Next or previous word with an entry |
 | Up | Paused: enters word mode. Playing: jellyfin-web's | Scrolls the popup. At the end, nothing |
 | Down | jellyfin-web's | Scrolls the popup. At the end, nothing |
 | Back | jellyfin-web's | Leaves word mode and stays paused |
@@ -393,7 +432,8 @@ does not. That is from how browsers document it: headless Playwright has no such
 - One of jellyfin-web's dialogs or menus is open, by its own test, `.dialogContainer .dialog.opened`.
 - Entering, when nothing on screen has an entry: no line, or a line with no known word. A key that would do nothing here
   stays useful there.
-- With `upOnlyEntry`, Left and Right, until Up has entered.
+- With Up only, Left and Right, until Up has entered. That is `upOnlyEntry`, and when the user has not chosen, everywhere but
+  the TV layout. See [Settings](#settings).
 
 Up Next counts as part of the OSD, not as a dialog, so it does not stop word mode from starting. That is untested, as it
 needs a real episode's length.
@@ -462,7 +502,8 @@ resumes at once.
 
 ### The popup
 
-It is Yomitan's. `renderer.js` runs its `DisplayGenerator` unmodified, with `templates-display.html` from the submodule,
+It is Yomitan's, in an element with `role=region` and the label "Yomitan: " and the word, since it never takes the focus
+and is not a dialog. `renderer.js` runs its `DisplayGenerator` unmodified, with `templates-display.html` from the submodule,
 in a shadow root, so neither side's CSS reaches the other. `client/display-css.mjs` builds the CSS from Yomitan's, changing
 three things by rule: `:root` becomes `:host`, the settings page's rules in `material.css` go, and URLs go, apart from two
 icons that are inlined, since they point into an extension. The options the extension sets on `<html>` are on the popup's
@@ -496,7 +537,9 @@ in custom properties and in values holding a `var()`. The list would already ref
 this is a second guard, and it saves reasoning about what an escape turns into. `attr()` is only allowed in `content`.
 
 A link to a web page stays, with `target=_blank` and `rel=noreferrer noopener`, and does nothing until someone follows it.
-A link to another entry opens that entry in the popup.
+A link to another entry opens that entry in the popup. If nothing has that entry, the popup stays on what it showed, with
+"Nothing found for" and the link's text, as text, above it. There is no way back from a link, so closing would lose the
+entry someone was reading.
 
 **Images** come from `GET /Yomitan/Media`, which needs the `Authorization` header, so they are fetched and shown from
 `blob:` URLs. Every URL is revoked when the popup closes or moves to another word, and a fetch still under way is aborted.

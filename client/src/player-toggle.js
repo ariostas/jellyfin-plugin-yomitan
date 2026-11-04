@@ -15,12 +15,8 @@ const SUBTITLE_BUTTON = '.page:not(.hide) .videoOsdBottom .btnSubtitles';
 const ON_COLOR = 'var(--jf-palette-primary-main, #00a4dc)';
 const PROBLEM_COLOR = '#ffb300';
 
-const PROBLEMS = {
-    none: 'Yomitan has no dictionaries yet, so subtitles stay as they are. An administrator can add them in the dashboard, under Yomitan.',
-    disabled: 'All your Yomitan dictionaries are turned off, so subtitles stay as they are. Settings, Yomitan has the list.',
-    'no-terms': 'The Yomitan dictionaries you have on hold no words, so subtitles stay as they are. Settings, Yomitan has the list.',
-    failed: 'Yomitan could not start on this track, so subtitles stay as they are.',
-};
+/** When the engine itself did not load. What it finds wrong it words itself, in `PROBLEMS` in playback/controller.js. */
+const FAILED = 'Yomitan could not start on this track, so subtitles stay as they are.';
 
 export class PlayerToggle {
     /**
@@ -28,17 +24,23 @@ export class PlayerToggle {
      * @param {object} options.playbackManager jellyfin-web's playbackManager.
      * @param {object} options.events jellyfin-web's Events.
      * @param {import('./settings.js').Settings} options.settings
+     * @param {() => Promise<{showIntro: Function}>} options.loadIntro Fetches what shows the notice that introduces it.
      */
-    constructor({playbackManager, events, settings}) {
+    constructor({playbackManager, events, settings, loadIntro}) {
         this._manager = playbackManager;
         this._events = events;
         this._settings = settings;
+        this._loadIntro = loadIntro;
         this._timer = 0;
         this._button = null;
         this._trackKey = null;
         this._applies = false;
         this._decision = null;
+        /** What is wrong, in words, or null. */
         this._problem = null;
+        /** Whether the notice that introduces the button has been shown on this page, which is once at most. */
+        this._introduced = false;
+        this._closeIntro = null;
     }
 
     /** Starts following playback, including one already under way. */
@@ -51,18 +53,19 @@ export class PlayerToggle {
 
     /** @param {EventTarget} controller The PlaybackController, to hear from once the engine has started it. */
     watch(controller) {
-        controller.addEventListener('inactive', ({detail: {session}}) => this.report(session?.problem ?? null));
+        controller.addEventListener('inactive', ({detail: {session}}) => this.report(session?.problem ?? null, controller.problems));
     }
 
     /**
-     * Says why turning this on did nothing, on the button and in a notice.
-     * @param {keyof typeof PROBLEMS|null} problem
+     * Says why turning this on did nothing, on the button, in its label and tooltip too, and in a notice.
+     * @param {string|null} problem A session's `problem`, or `failed`.
+     * @param {Record<string, string>} [words] What each problem means.
      */
-    report(problem) {
-        this._problem = problem;
+    report(problem, words = {}) {
+        this._problem = problem && (words[problem] ?? FAILED);
         this._render();
-        if (problem && this._settings.get('enabled')) {
-            showNotice(PROBLEMS[problem]);
+        if (this._problem && this._settings.get('enabled')) {
+            showNotice(this._problem);
         }
     }
 
@@ -92,6 +95,7 @@ export class PlayerToggle {
             this._decide(playing);
             if (this._applies) {
                 this._place();
+                this._introduce();
             } else {
                 this._remove();
             }
@@ -183,7 +187,33 @@ export class PlayerToggle {
 
     _onClick = () => {
         this._settings.set('enabled', !this._settings.get('enabled'));
+        // Whoever presses it has found it.
+        this._settings.set('introSeen', true);
+        this._closeIntro?.();
     };
+
+    /**
+     * The first time this user plays a track the button is for, with the feature off, a notice says what it is. See
+     * settings-page/intro.js. It does not pause, and if anything goes wrong it just does not show.
+     */
+    _introduce() {
+        const settings = this._settings;
+        const due = () => this._button?.isConnected && !settings.get('enabled') && !settings.get('introSeen');
+        if (this._introduced || !due()) {
+            return;
+        }
+
+        this._introduced = true;
+        // A device that has not seen this user before only has the defaults until the server answers.
+        settings.refresh()
+            .then(() => due() && this._loadIntro())
+            .then((intro) => {
+                if (intro && due()) {
+                    this._closeIntro = intro.showIntro(settings, showNotice);
+                }
+            })
+            .catch((error) => console.debug('[yomitan] no notice:', error));
+    }
 
     _render() {
         if (!this._button) {
@@ -191,7 +221,7 @@ export class PlayerToggle {
         }
 
         const enabled = this._settings.get('enabled');
-        const label = `Yomitan lookups: ${enabled ? 'on' : 'off'}${this._problem ? ', not working' : ''}`;
+        const label = `Yomitan lookups: ${enabled ? 'on' : 'off'}${this._problem ? `, not working. ${this._problem}` : ''}`;
         this._button.title = label;
         this._button.setAttribute('aria-label', label);
         this._button.setAttribute('aria-pressed', `${enabled}`);
@@ -205,6 +235,8 @@ export class PlayerToggle {
     _remove() {
         this._button?.remove();
         this._button = null;
+        // It is about this button and these subtitles.
+        this._closeIntro?.();
     }
 
     _stop() {

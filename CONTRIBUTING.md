@@ -144,6 +144,11 @@ feature turned on with the button in the player:
 14. The button next to the subtitle button in the player is easy to hit, and turns the feature on and off with the video
     going on.
 15. Settings, Yomitan opens from your picture. The phone's Back button closes it and stays in Settings.
+16. With the feature off and a user who has never seen it, the first Japanese track shows a notice about the button, and
+    its two buttons are easy to hit. It does not come back, on this phone or another device.
+17. On an iPhone, in Safari: the plugin works with the video in the page. The player's fullscreen button opens iOS's own
+    player, where the plugin's line is gone and Jellyfin's subtitles are back, and leaving it brings the plugin's line
+    back. On an iPad, fullscreen keeps the plugin's line and popup.
 
 ### On a TV
 
@@ -161,6 +166,8 @@ subtitle track, a dictionary installed and the feature on, on a TV browser that 
 7. With the OSD open, Left and Right reach the button next to the subtitle button, unless the video is paused, when they
    walk the words. OK turns the feature on and off.
 8. Settings, Yomitan can be walked with the arrows, OK presses, and Back closes it.
+9. With the feature off and a user who has never seen it, the notice about the button shows on the first Japanese track.
+   The arrows reach its buttons from the OSD, OK presses them, and Back closes it and stays in the player.
 
 ## CI
 

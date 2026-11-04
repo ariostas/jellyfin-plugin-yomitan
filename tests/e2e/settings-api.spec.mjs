@@ -55,7 +55,7 @@ test('saves at the same moment all land, so two devices keep both changes', asyn
     const before = await read(aliceClient);
     const values = [
         {hoverDelayMs: 111}, {hoverGraceMs: 222}, {upOnlyEntry: true}, {fontScale: 150}, {enabled: true},
-        {dictionaryOrder: ['A', 'B']}, {disabledDictionaries: ['C']},
+        {dictionaryOrder: ['A', 'B']}, {disabledDictionaries: ['C']}, {introSeen: true},
     ];
     const responses = await Promise.all(values.map((value) => put(aliceClient, value)));
     expect(responses.map(({status}) => status)).toEqual(values.map(() => 200));
@@ -140,6 +140,7 @@ test.describe('the server refuses', () => {
         [{enabled: 1}, 'invalid_setting'],
         [{enabled: null}, 'invalid_setting'],
         [{upOnlyEntry: 'yes'}, 'invalid_setting'],
+        [{introSeen: null}, 'invalid_setting'],
         [{hoverDelayMs: -1}, 'invalid_setting'],
         [{hoverDelayMs: 5001}, 'invalid_setting'],
         [{hoverDelayMs: 1.5}, 'invalid_setting'],

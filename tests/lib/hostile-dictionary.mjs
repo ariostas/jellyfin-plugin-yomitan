@@ -117,6 +117,9 @@ function hostileGlossary(canary) {
     ];
 }
 
+/** What a link points at that no dictionary has. */
+export const DEAD_LINK = '<img src=x onerror="window.pwned=\'dead link\'">';
+
 /** Things to click, on an entry of their own, since the one above has an element trying to cover the popup. */
 function hostileLinks(canary) {
     return [{
@@ -124,6 +127,8 @@ function hostileLinks(canary) {
         content: [
             {tag: 'a', href: `${canary}/link-followed`, content: 'an outside link'},
             {tag: 'div', content: [{tag: 'a', href: '?query=猫', content: 'a link to 猫'}]},
+            // Nothing has this, and the popup says so with the link's text, which has to stay text.
+            {tag: 'div', content: [{tag: 'a', href: `?query=${encodeURIComponent(DEAD_LINK)}`, content: 'a link to nothing'}]},
             {
                 tag: 'img',
                 path: 'evil.svg',

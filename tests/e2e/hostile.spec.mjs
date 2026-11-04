@@ -2,9 +2,9 @@
 // script or reach out. Nothing in the page is a content security policy: the proof is that nothing happened.
 import {createServer} from 'node:http';
 import {clientFor, deleteAll, importArchive} from '../lib/dictionaries.mjs';
-import {hostileStyles, hostileTitle, LIVE_ATTACKS, makeHostileDictionary, rowsPastTheSchema} from '../lib/hostile-dictionary.mjs';
+import {DEAD_LINK, hostileStyles, hostileTitle, LIVE_ATTACKS, makeHostileDictionary, rowsPastTheSchema} from '../lib/hostile-dictionary.mjs';
 import {credentials, logIn, server} from '../lib/jellyfin.mjs';
-import {expectPopup, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm} from '../lib/lookup.mjs';
+import {expectPopup, isPaused, LINES, moveToWord, parkMouse, popupState, showLine, startLookupFilm} from '../lib/lookup.mjs';
 import {makeMiniDictionary} from '../lib/mini-dictionary.mjs';
 import {expect, test} from '../lib/test.mjs';
 
@@ -205,11 +205,36 @@ test('an outside link does nothing until it is followed, and then opens with no 
     await opened.close();
 });
 
-test('a link to another entry opens that entry in the popup', async ({page}) => {
+test('a link to another entry opens that entry in the popup, which is named for what it shows', async ({page}) => {
     await openLinks(page);
-    await page.locator('.yomitan-popup').getByText('a link to 猫').click();
+    const popup = page.locator('.yomitan-popup');
+    await expect(popup).toHaveAttribute('role', 'region');
+    await expect(popup).toHaveAttribute('aria-label', 'Yomitan: 字幕');
+    await popup.getByText('a link to 猫').click();
     await expectPopup(page, '猫');
     expect((await popupState(page)).open).toBe(true);
+    await expect(popup).toHaveAttribute('aria-label', 'Yomitan: 猫');
+});
+
+test('a link to an entry nothing has keeps the popup on what it showed, and says so, as text', async ({page}) => {
+    await openLinks(page);
+    const before = await popupState(page);
+    await page.locator('.yomitan-popup').getByText('a link to nothing').click();
+    const note = () => page.evaluate(() => {
+        const element = document.querySelector('.yomitan-popup').shadowRoot.querySelector('.popup-note');
+        return element.hidden ? null : {text: element.textContent, children: element.children.length};
+    });
+    await expect.poll(note).toEqual({text: `Nothing found for ${DEAD_LINK}`, children: 0});
+    const after = await popupState(page);
+    expect(after.open).toBe(true);
+    expect(after.headwords).toEqual(before.headwords);
+    expect(await isPaused(page)).toBe(true);
+    expect(await pwned(page)).toBeNull();
+
+    // The next entry has no note.
+    await page.locator('.yomitan-popup').getByText('a link to 猫').click();
+    await expectPopup(page, '猫');
+    expect(await note()).toBeNull();
 });
 
 test('an SVG only ever shows through an <img>, and its blob cannot be opened as a page', async ({page, context}) => {

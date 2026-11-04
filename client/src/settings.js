@@ -24,14 +24,19 @@ export const DEFAULT_SETTINGS = Object.freeze({
     hoverDelayMs: 200,
     /** How long the popup survives the mouse leaving it and the word, so it can cross the gap between them. */
     hoverGraceMs: 300,
-    /** Whether only Up enters word mode, which leaves Left and Right to the OSD's buttons while paused. */
-    upOnlyEntry: false,
+    /**
+     * Whether only Up enters word mode, which leaves Left and Right to the OSD's buttons while paused. Null until the user
+     * chooses, and then {@link entersWithUpOnly} decides by the layout.
+     */
+    upOnlyEntry: null,
     /** The size of the lines, in percent of what fits the screen. */
     fontScale: 100,
     /** Titles in the order this user wants them. Anything not listed comes after, in import order. */
     dictionaryOrder: Object.freeze([]),
     /** Titles this user has turned off. Anything not listed is on, so a new dictionary works without asking. */
     disabledDictionaries: Object.freeze([]),
+    /** Whether this user has closed or acted on the notice that introduces the button in the player. */
+    introSeen: false,
 });
 
 /** The same bounds as the server's, which is what enforces them. Here they only shape the controls. */
@@ -47,8 +52,24 @@ const isValid = (name, value) => {
         return Array.isArray(value) && value.every((title) => typeof title === 'string');
     }
 
+    // A choice not made yet, which a boolean makes.
+    if (fallback === null) {
+        return value === null || typeof value === 'boolean';
+    }
+
     return typeof value === typeof fallback;
 };
+
+/**
+ * Whether only Up enters word mode here. Until the user chooses, it does outside jellyfin-web's TV layout, so that Left
+ * and Right still go back and forward on a paused video, which learners replaying a line do all the time. In the TV
+ * layout Left and Right enter too, as they are what a remote's thumb is on.
+ * @param {Settings} settings
+ * @returns {boolean}
+ */
+export function entersWithUpOnly(settings) {
+    return settings.get('upOnlyEntry') ?? !document.documentElement.classList.contains('layout-tv');
+}
 
 const isSame = (a, b) => a === b || (Array.isArray(a) && JSON.stringify(a) === JSON.stringify(b));
 
@@ -123,7 +144,7 @@ export class Settings extends EventTarget {
 
     /**
      * @param {keyof typeof DEFAULT_SETTINGS} name
-     * @returns {boolean|number|readonly string[]}
+     * @returns {boolean|number|readonly string[]|null}
      */
     get(name) {
         return this._values[name];
@@ -132,7 +153,7 @@ export class Settings extends EventTarget {
     /**
      * Applies a value at once, and sends it to the server. With nobody signed in it holds for this page alone.
      * @param {keyof typeof DEFAULT_SETTINGS} name
-     * @param {boolean|number|string[]} value
+     * @param {boolean|number|string[]|null} value
      * @fires Settings#change With `{name, value}`, if it is a new value.
      */
     set(name, value) {

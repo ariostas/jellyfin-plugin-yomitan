@@ -40,6 +40,7 @@ Without the repository, unzip a release's `yomitan_<version>.zip` from
    on disk, and the page shows the total.
 2. **Each user turns it on.** It is off by default, because it replaces styled subtitles with a plain line. During playback
    of a Japanese text subtitle track, the 文A button next to the subtitle button in the player turns it on and off at once.
+   The first time someone plays one with it off, a notice says so, once.
 3. **Each user chooses the rest** under their picture, Settings, Yomitan: which dictionaries to use and in what order, the
    size of the lines, the keys, and the hover delay. It follows them to every device, by the next time a video starts there.
 
@@ -56,14 +57,15 @@ it and resume.
 
 | Key | What it does |
 | --- | --- |
-| Left, Right or Up | Hides the player controls and marks a word of the line, with its popup |
+| Up | Hides the player controls and marks a word of the line, with its popup. In the TV layout, Left and Right do too |
 | Left, Right | Move to the previous or next word |
 | Up, Down | Scroll a long popup |
 | Back or Escape | Leaves the words, and stays paused in the player |
 | Enter or OK | Resumes |
 
-To keep Left and Right for the player's buttons while paused, turn on **Only Up starts walking the words** under
-Settings, Yomitan.
+Outside the TV layout, Left and Right stay the player's until Up has started, so they still go back and forward on a
+paused video. **Only Up starts walking the words**, under Settings, Yomitan, is on there and off in the TV layout until
+you change it, and then your choice holds everywhere.
 
 ## Which apps it works in
 
@@ -72,7 +74,7 @@ The plugin adds a script to the web interface that the server hosts, so it only 
 | App | Works? |
 | --- | --- |
 | Desktop browsers | Yes. Tested in Chromium, Firefox and WebKit. Safari itself has not been tried. |
-| Phone browsers | Should work. Tested only in a desktop browser pretending to be a phone. |
+| Phone browsers | Should work, but on an iPhone only while the video is not fullscreen. Tested only in a desktop browser pretending to be a phone. |
 | Jellyfin Android app | Should work, but only with the web player: in the app's settings, under **Video player**, set **Video player type** to **Web player**. The default player is native, and the plugin cannot reach it. |
 | jellyfin-web's TV layout, in a browser | Should work. Tested with key presses, not a real remote. |
 | Android TV, Google TV, Fire TV | No, and no plugin can: the app is native and never loads the web interface. |
@@ -88,9 +90,9 @@ None of it has been tried yet on a real phone, in the Android app or on a TV. If
 - **No 文A button in the player.** The button only appears for a Japanese text subtitle track: one tagged Japanese, or an
   untagged one whose text is. Picture subtitles (PGS, VobSub) and subtitles burned into the video cannot be read. If no
   track gets the button, check that Yomitan is **Active** under Dashboard, Plugins.
-- **The button is amber.** The feature is on, but something stops it, and the button's label and a notice say what: most
-  often no dictionaries are installed, or you have turned them all off under Settings, Yomitan. Jellyfin's own subtitles
-  show in the meantime.
+- **The button is amber.** The feature is on, but something stops it. A notice says what when it starts, and so does the
+  button's label, which shows when the mouse rests on it and which a screen reader reads: most often no dictionaries are
+  installed, or you have turned them all off under Settings, Yomitan. Jellyfin's own subtitles show in the meantime.
 - **Nothing happens in the Android app.** Set the app's video player to **Web player**, as above.
 
 ## Known limits
@@ -101,6 +103,11 @@ None of it has been tried yet on a real phone, in the Android app or on a TV. If
 - **The line is plain.** With the feature on, ASS styling, positions and effects are replaced by plain lines: dialogue at
   the bottom, signs at the top. That is why it is off until a user turns it on.
 - **The primary subtitle track only.** A Japanese secondary track under another language is not used.
+- **Not in an iPhone's fullscreen.** On an iPhone, the player plays the video inside the page, where the plugin works. Its
+  fullscreen button hands the video to iOS's own player, which shows nothing of the page, so the line and the popup are
+  not there. Until you leave it, the plugin gives the subtitles back to Jellyfin, as if it were off. On an iPad the
+  player makes the whole page fullscreen instead, so it should work there. This is from jellyfin-web's code and MDN's
+  notes on Safari, not from a real iPhone or iPad.
 - **No Anki, no audio**, and nothing else from Yomitan's browser extension beyond the lookup and its popup.
 - **Lookups need the server.** Each new line is one request, and a popup one more, so a slow connection to the server makes
   them slow too.

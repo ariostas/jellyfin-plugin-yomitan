@@ -84,10 +84,11 @@ export const defaultSettings = {
     enabled: false,
     hoverDelayMs: 200,
     hoverGraceMs: 300,
-    upOnlyEntry: false,
+    upOnlyEntry: null,
     fontScale: 100,
     dictionaryOrder: [],
     disabledDictionaries: [],
+    introSeen: false,
 };
 
 /**
@@ -133,7 +134,8 @@ export async function fillLogin(page, {username, password}) {
 /**
  * Opens jellyfin-web and logs in through the form, as the admin unless told otherwise. The feature is off by default, so
  * this first sets the user's real settings on the server: on, and everything else at its default, so that nothing a test
- * saved reaches the next one. Pass `settings: null` to leave them alone, as for a user who is new.
+ * saved reaches the next one, apart from the notice that introduces the button, which is seen, as only its own tests want
+ * it. Pass `settings: null` to leave them alone, as for a user who is new.
  * @param {import('@playwright/test').Page} page
  * @param {object} [options]
  * @param {{username: string, password: string}} [options.user]
@@ -141,7 +143,7 @@ export async function fillLogin(page, {username, password}) {
  */
 export async function logIn(page, {user = credentials, settings = {enabled: true}} = {}) {
     if (settings) {
-        await saveSettings(user, {...defaultSettings, ...settings});
+        await saveSettings(user, {...defaultSettings, introSeen: true, ...settings});
     }
 
     await page.goto('web/');

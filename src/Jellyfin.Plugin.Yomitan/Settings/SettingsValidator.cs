@@ -43,42 +43,45 @@ public static class SettingsValidator
     /// <summary>The largest font scale, in percent.</summary>
     public const int MaxFontScale = 300;
 
-    private static readonly Dictionary<string, Func<JsonElement, object>> Readers = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Func<JsonElement, object?>> Readers = new(StringComparer.Ordinal)
     {
         ["enabled"] = element => ReadBoolean("enabled", element),
         ["hoverDelayMs"] = element => ReadInteger("hoverDelayMs", element, 0, MaxHoverMs),
         ["hoverGraceMs"] = element => ReadInteger("hoverGraceMs", element, 0, MaxHoverMs),
-        ["upOnlyEntry"] = element => ReadBoolean("upOnlyEntry", element),
+        ["upOnlyEntry"] = element => ReadChoice("upOnlyEntry", element),
         ["fontScale"] = element => ReadInteger("fontScale", element, MinFontScale, MaxFontScale),
         ["dictionaryOrder"] = element => ReadTitles("dictionaryOrder", element),
         ["disabledDictionaries"] = element => ReadTitles("disabledDictionaries", element),
+        ["introSeen"] = element => ReadBoolean("introSeen", element),
     };
 
     /// <summary>Gets a new copy of the defaults. A user who has saved nothing has exactly these.</summary>
     /// <returns>Every setting, by name, in the order documented.</returns>
-    public static Dictionary<string, object> Defaults() => new(StringComparer.Ordinal)
+    public static Dictionary<string, object?> Defaults() => new(StringComparer.Ordinal)
     {
         ["enabled"] = false,
         ["hoverDelayMs"] = 200,
         ["hoverGraceMs"] = 300,
-        ["upOnlyEntry"] = false,
+        // Not chosen yet, so the client goes by the layout: Up only, apart from jellyfin-web's TV layout.
+        ["upOnlyEntry"] = null,
         ["fontScale"] = 100,
         ["dictionaryOrder"] = Array.Empty<string>(),
         ["disabledDictionaries"] = Array.Empty<string>(),
+        ["introSeen"] = false,
     };
 
     /// <summary>Checks a request. One bad value refuses all of it.</summary>
     /// <param name="body">The request's root element.</param>
     /// <returns>The values it sets, by name.</returns>
     /// <exception cref="SettingsException">If anything is not as documented.</exception>
-    public static Dictionary<string, object> Parse(JsonElement body)
+    public static Dictionary<string, object?> Parse(JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object)
         {
             throw new SettingsException("invalid_request", "The body must be a JSON object");
         }
 
-        var values = new Dictionary<string, object>(StringComparer.Ordinal);
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var property in body.EnumerateObject())
         {
             if (!Readers.TryGetValue(property.Name, out var reader))
@@ -98,7 +101,7 @@ public static class SettingsValidator
     /// <summary>Reads what was stored, on top of the defaults. A value that no longer passes is left out.</summary>
     /// <param name="stored">The JSON from the store, or null if the user has none.</param>
     /// <returns>Every setting, by name.</returns>
-    public static Dictionary<string, object> Restore(string? stored)
+    public static Dictionary<string, object?> Restore(string? stored)
     {
         var values = Defaults();
         if (stored is null)
@@ -130,6 +133,14 @@ public static class SettingsValidator
         JsonValueKind.True => true,
         JsonValueKind.False => false,
         _ => throw new SettingsException("invalid_setting", $"{name} must be true or false"),
+    };
+
+    private static bool? ReadChoice(string name, JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null => null,
+        _ => throw new SettingsException("invalid_setting", $"{name} must be true, false or null"),
     };
 
     private static int ReadInteger(string name, JsonElement element, int minimum, int maximum)

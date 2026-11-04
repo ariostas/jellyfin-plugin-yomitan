@@ -23,6 +23,12 @@ const FRAME_CSS = `
     /* So that nothing in an entry can escape, not even position: fixed, which would otherwise cover the page. */
     contain: layout paint style;
 }
+.popup-note {
+    flex: none;
+    padding: 0.4em 0.75em;
+    border-bottom: 1px solid var(--light-border-color);
+}
+.popup-note[hidden] { display: none; }
 .popup-scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -98,6 +104,8 @@ export class Popup {
         this.host.className = 'yomitan-popup';
         this.host.hidden = true;
         this.host.lang = 'ja';
+        // Not a dialog: it never takes the focus, and the video goes on behind it.
+        this.host.setAttribute('role', 'region');
         Object.assign(this.host.dataset, DISPLAY_OPTIONS);
 
         const root = this.host.attachShadow({mode: 'open'});
@@ -106,9 +114,15 @@ export class Popup {
         this._dictionaryStyle = document.createElement('style');
         this._frame = document.createElement('div');
         this._frame.className = 'popup-frame';
+        /** A line above the entries, for what happened to a link followed inside them. */
+        this._note = document.createElement('div');
+        this._note.className = 'popup-note';
+        this._note.setAttribute('role', 'status');
+        this._note.lang = 'en';
+        this._note.hidden = true;
         this._scroll = document.createElement('div');
         this._scroll.className = 'popup-scroll';
-        this._frame.append(this._scroll);
+        this._frame.append(this._note, this._scroll);
         root.append(style, this._dictionaryStyle, this._frame);
         /** @type {ShadowRoot} */
         this.root = root;
@@ -128,12 +142,15 @@ export class Popup {
      * @param {string} dictionaryStyles
      * @param {HTMLElement} anchor The word it describes.
      * @param {{bottom: number}} insets What the OSD covers.
+     * @param {string} text What was looked up, which names the popup for a screen reader.
      */
-    show(entries, dictionaryStyles, anchor, insets) {
+    show(entries, dictionaryStyles, anchor, insets, text) {
         if (this._dictionaryStyle.textContent !== dictionaryStyles) {
             this._dictionaryStyle.textContent = dictionaryStyles;
         }
 
+        this.host.setAttribute('aria-label', `Yomitan: ${text}`);
+        this._note.hidden = true;
         this._scroll.replaceChildren(...entries);
         this._scroll.scrollTop = 0;
         this.host.hidden = false;
@@ -171,6 +188,12 @@ export class Popup {
         host.style.visibility = '';
     }
 
+    /** @param {string} text Shown above the entries, as text, until the popup shows something else. */
+    note(text) {
+        this._note.textContent = text;
+        this._note.hidden = false;
+    }
+
     /** @param {number} pixels Down if positive. */
     scrollBy(pixels) {
         this._scroll.scrollTop += pixels;
@@ -178,6 +201,7 @@ export class Popup {
 
     hide() {
         this.host.hidden = true;
+        this._note.hidden = true;
         this._scroll.replaceChildren();
     }
 
