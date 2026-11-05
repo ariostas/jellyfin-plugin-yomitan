@@ -40,7 +40,7 @@ export class TermStore {
     /** Drops everything. Row ids mean nothing once a dictionary has been replaced. */
     clear() {
         this._known = new Set();
-        this._rowIds = new Set();
+        this._byId = new Map();
         this._byTerm = new Map();
         this._byReading = new Map();
         this.generation = (this.generation ?? 0) + 1;
@@ -48,7 +48,7 @@ export class TermStore {
 
     /** @returns {number} */
     get rowCount() {
-        return this._rowIds.size;
+        return this._byId.size;
     }
 
     /** @returns {{terms: number, rows: number}} */
@@ -105,8 +105,8 @@ export class TermStore {
     _addRows(rows) {
         const changed = new Set();
         for (const row of rows) {
-            if (!this._rowIds.has(row.id)) {
-                this._rowIds.add(row.id);
+            if (!this._byId.has(row.id)) {
+                this._byId.set(row.id, row);
                 changed.add(this._index(this._byTerm, row.term, row));
                 changed.add(this._index(this._byReading, row.reading, row));
             }
@@ -141,6 +141,15 @@ export class TermStore {
             this.clear();
             this.generation = generation;
         }
+    }
+
+    /**
+     * @param {number} id A row's id, which the Translator keeps as its definition's `id`.
+     * @returns {{definitionTags: string[], termTags: string[]}|undefined} The row's tag names, such as `exp` or `uk`
+     *   and `⭐`, which the Translator only reads in a lookup with a request for what they mean.
+     */
+    tagsOf(id) {
+        return this._byId.get(id);
     }
 
     /**

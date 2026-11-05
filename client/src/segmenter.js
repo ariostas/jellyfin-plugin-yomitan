@@ -153,8 +153,9 @@ export function scanWindow(run, index) {
 }
 
 const COST = {
-    // Kana words like また are filed under a kanji headword, so a priority word's reading is only slightly suspect.
-    priority: {term: 1, reading: 1.05},
+    // Hiragana that only matches a kanji word's reading is weak evidence, as たん is for 単, however common 単 is. Kana
+    // words filed under kanji, like また under 又, are marked usually kana, and count as written.
+    priority: {term: 1, reading: 1.3},
     common: {term: 1, reading: 1.3},
     uncommon: {term: 1.5, reading: 2.2},
     rare: {term: 2, reading: 2.7},
@@ -186,6 +187,8 @@ const COST = {
 const PRIORITY_SCORE = 500_000;
 const RARE_SCORE = -10_000;
 const NAME_DICTIONARY = /nedict|\bnames?\b/i;
+/** JMdict's tag for a sense usually written in kana. Jitendex has none. */
+const USUALLY_KANA = 'uk';
 const HAS_HIRAGANA = /[\u3041-\u3096]/;
 const HAS_KANJI = /\p{Script=Han}/u;
 const WEAK_INFLECTION_LENGTH = 4;
@@ -230,9 +233,12 @@ function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surf
 
     const level = commonness(score);
     // A reading in katakana is how the word is written. JMdict files コーヒー under 珈琲, which hardly anyone uses, with
-    // the kanji's low score, so as a reading it would lose to the same katakana with no entry at all.
+    // the kanji's low score, so as a reading it would lose to the same katakana with no entry at all. So is kana for a
+    // sense the dictionary marks as usually written in kana, as ある is for 有る, but only in a common word: rare ones
+    // are marked too, and このよう would then beat the この + よう it nearly always is.
     const spelled = matchSource === 'term' ? term : reading;
-    const written = (matchSource === 'term' || KATAKANA_WORD.test(reading)) && !isFolded(surface, spelled);
+    const usuallyKana = (level === 'priority' || level === 'common') && !HAS_KANJI.test(surface) && definitions?.some(({tagNames}) => tagNames?.includes(USUALLY_KANA));
+    const written = (matchSource === 'term' || KATAKANA_WORD.test(reading) || usuallyKana) && !isFolded(surface, spelled);
     let cost = COST[level][written ? 'term' : 'reading'];
     if ((level === 'uncommon' || level === 'rare') && HAS_KANJI.test(surface) && HAS_HIRAGANA.test(surface)) {
         cost += COST.rarePhraseCharacter * Math.max(0, surface.length - 3);

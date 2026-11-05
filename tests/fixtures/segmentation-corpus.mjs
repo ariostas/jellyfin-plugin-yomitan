@@ -93,6 +93,10 @@ export const corpus = [
     {text: 'ありがと～', words: 'ありがと'},
     {text: '早く行くぞお', words: '早く/行くぞお', or: ['早く/行く/ぞお']},
 
+    // Kana for verbs filed under kanji the dictionary marks as usually written in kana, which beat coincidences
+    {text: '机の上にあったんだ', words: '机/の/上/に/あった/んだ', or: ['机/の/上/に/あった/ん/だ']},
+    {text: 'まだいたんだ', words: 'まだ/いた/んだ', or: ['まだ/いた/ん/だ']},
+
     // Kanji that subtitles rarely give furigana for
     {text: '憂鬱な気分で薔薇を眺める', words: '憂鬱/な/気分/で/薔薇/を/眺める'},
     {text: '経済成長率が低下している', words: '経済成長率/が/低下している', or: ['経済/成長率/が/低下している', '経済成長/率/が/低下している', '経済成長率/が/低下/している', '経済/成長率/が/低下/している', '経済成長/率/が/低下/している']},
@@ -123,7 +127,7 @@ export const heldOut = [
     {text: 'シーターは ラーマの妻', words: 'シーター/は/ラーマ/の/妻'},
     {text: 'シーターの父は ジャナカ', words: 'シーター/の/父/は/ジャナカ'},
     {text: 'シーターには名前が沢山ある', words: 'シーター/に/は/名前/が/沢山/ある', or: ['シーター/には/名前/が/沢山/ある']},
-    {text: 'シーターのもう１つの名前だ', words: 'シーター/の/もう/１つ/の/名前/だ', or: ['シーター/の/もう/１/つ/の/名前/だ', 'シーター/の/もう１つ/の/名前/だ'], known: 'のもう reads as 飲もう. Only the grammar around it rules that out, and costs see one word at a time.'},
+    {text: 'シーターのもう１つの名前だ', words: 'シーター/の/もう/１つ/の/名前/だ', or: ['シーター/の/もう/１/つ/の/名前/だ', 'シーター/の/もう１つ/の/名前/だ']},
     {text: 'ダシャラタが王位を渡そうとするが', words: 'ダシャラタ/が/王位/を/渡そう/と/する/が', known: 'とする is a dictionary entry, so this is defensible, though ようとする is と + する.'},
     {text: 'カイケーイーが割って入り', words: 'カイケーイー/が/割って入り', or: ['カイケーイー/が/割って/入り']},
     {text: '彼に尽くしたそうで…', words: '彼/に/尽くした/そう/で', or: ['彼/に/尽くしたそう/で']},
@@ -145,7 +149,7 @@ export const heldOut = [
 // Lines from the same sources, expected splits written before the improved model ever saw them.
 export const heldOutRoundTwo = [
     {text: 'ダディー　どうしてこんなに長く さまようの？', pattern: 'ダディー/どうして/こんなに/長く/さまよう/の'},
-    {text: '私を望むシークはいくらでもいる', pattern: '私/を/望む/シーク/は/(いくら/でも|いくらでも)/いる', known: 'はい is a stronger word than は, and くら fills the gap. Wrong, and only grammar could tell.'},
+    {text: '私を望むシークはいくらでもいる', pattern: '私/を/望む/シーク/は/(いくら/でも|いくらでも)/いる'},
     {text: 'まだ負けてないけど　弱くなってしまうかも', pattern: 'まだ/負けてない/けど/弱く/(なってしまう|なって/しまう)/かも'},
     {text: 'ダディー　ダディー　帰ってきて', pattern: 'ダディー/ダディー/(帰ってきて|帰って/きて)'},
     {text: 'それだけよ', pattern: '(それだけ|それ/だけ)/よ'},
@@ -171,5 +175,5 @@ export const heldOutRoundTwo = [
     {text: '日帰り入浴ができるんだそうです', pattern: '日帰り/入浴/が/できる/(ん/だ|んだ)/(そう/です|そうです)'},
     {text: '要するに間欠泉です', pattern: '要するに/間欠泉/です'},
     {text: 'あそこへ行ったことはないんですが', pattern: 'あそこ/へ/行った/こと/は/ない/(ん/です|んです)/が'},
-    {text: '栗あんしるこを買いました', pattern: '(栗/あん/しるこ|栗あん/しるこ)/を/買いました', known: 'しるこ loses to しる + こ, because the headword is 汁粉 and hiragana is only its reading.'},
+    {text: '栗あんしるこを買いました', pattern: '(栗/あん/しるこ|栗あん/しるこ)/を/買いました'},
 ];

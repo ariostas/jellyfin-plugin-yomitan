@@ -125,7 +125,7 @@ test('a full store starts over between lines, so a line never loses the rows it 
         terms._fetchTerms = async (list) => {
             const result = await fetchTerms(list);
             for (let id = -1; id > -40_000; id -= 1) {
-                terms._rowIds.add(id);
+                terms._byId.set(id, {});
             }
 
             return result;
@@ -167,6 +167,17 @@ test('a lookup after segmenting reuses the rows', async ({page}) => {
     for (const {operations} of requests) {
         expect(operations.some(({op}) => op === 'findTermsBulk')).toBe(false);
     }
+});
+
+test('a scan gives each row\'s tag names, and asks nothing for what they mean', async ({page}) => {
+    await openEngine(page);
+    await page.evaluate(() => window.segmenter.segment('食べられなかった'));
+    const {requests, result} = await countQueries(page, () => page.evaluate(async () => {
+        const entry = (await window.engine.scan('食べられなかった')).find(({headwords}) => headwords[0].term === '食べる');
+        return {definition: entry.definitions[0].tagNames, headword: entry.headwords[0].tagNames};
+    }));
+    expect(result).toEqual({definition: ['v1'], headword: []});
+    expect(requests).toEqual([]);
 });
 
 test('lookups repeat exactly, so nothing in the store was edited in place', async ({page}) => {

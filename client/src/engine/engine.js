@@ -186,12 +186,25 @@ export class Engine extends EventTarget {
     }
 
     /**
-     * The entries for the start of `window`, with no tags or frequencies: what a segmenter needs.
+     * The entries for the start of `window`, with no frequencies: what a segmenter needs. Tags are only names, as
+     * `tagNames` on each definition and headword, since what they mean takes a request.
      * @param {string} window
      * @returns {Promise<object[]>}
      */
     async scan(window) {
         const {dictionaryEntries} = await this._translator.findTerms('simple', window, this._options);
+        for (const {definitions, headwords} of dictionaryEntries) {
+            // In 'simple' mode each entry is one row. A row from a second request is not in the store, and has none.
+            const row = this._terms.tagsOf(definitions[0]?.id);
+            for (const definition of definitions) {
+                definition.tagNames = row?.definitionTags ?? [];
+            }
+
+            for (const headword of headwords) {
+                headword.tagNames = row?.termTags ?? [];
+            }
+        }
+
         await yieldIfBusy();
         return dictionaryEntries;
     }

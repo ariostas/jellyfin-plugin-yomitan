@@ -344,7 +344,9 @@ Instead every candidate gets a cost, and the cheapest path through the line wins
 evidence: a name, a rare word, hiragana that only matches a kanji word's reading, or a span that is really a word plus a
 particle. Katakana that matches a reading counts as written, though: JMdict has words like `コーヒー` only under kanji
 hardly anyone writes, `珈琲`, with their low score, and as a reading it would lose to the same katakana with no entry at
-all. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
+all. So does kana for a common word whose sense JMdict marks `uk`, usually written in kana, as `ある` is for `有る`.
+The Translator only reads tags in a lookup that asks the server what they mean, so `Engine.scan` gives the segmenter
+their names, from the rows the term store already has, as `tagNames` on each definition and headword. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what
 the rule was for, but it still changes 17 of 1,847 lines of real subtitles, nearly all for the better, such as
 `の/デパート` over `のデ/パート`. Yomitan keeps only the longest match of each dictionary row, so when that one is
