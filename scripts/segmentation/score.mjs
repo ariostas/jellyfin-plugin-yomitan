@@ -448,6 +448,29 @@ function wrongStretches(letters, {expected, ignored}, actual) {
     return stretches;
 }
 
+// Digits and Latin letters are never looked up, so they are counted apart from words the dictionaries should know.
+const NOT_LOOKED_UP = /^[0-9０-９A-Za-zＡ-Ｚａ-ｚ]+$/;
+
+/**
+ * The expected words the splitter got right but could not explain: it found where they start and end, so the boundaries
+ * score them as right, but they have no entry and no popup. A word it split wrongly is a boundary error already.
+ */
+function unknownWordsOf(expected, actual) {
+    const byStart = new Map(actual.map((piece) => [piece.start, piece]));
+    const unknown = {words: [], names: [], notLookedUp: []};
+    for (const word of expected.words) {
+        const piece = byStart.get(word.start);
+        if (word.skip || !piece || piece.end !== word.end || piece.known) {
+            continue;
+        }
+
+        const list = word.name ? unknown.names : (NOT_LOOKED_UP.test(word.text) ? unknown.notLookedUp : unknown.words);
+        list.push(word.text);
+    }
+
+    return unknown;
+}
+
 const scored = chosen.map((label, index) => {
     const words = results[index];
     const actual = actualOf(label.text, words);
@@ -460,6 +483,7 @@ const scored = chosen.map((label, index) => {
         return errors(b) < errors(a) ? b : a;
     });
     return {
+        unknown: unknownWordsOf(best.expected, actual),
         ...label,
         actual: actual.map(({text}) => text).join('/'),
         expected: best.expected.words.map(({text, skip}) => (skip ? `?${text}` : text)).join('/'),
@@ -476,12 +500,14 @@ function summarize(lines) {
     const [hits, wanted, got] = [sum('hits'), sum('wanted'), sum('got')];
     const precision = got ? hits / got : 1;
     const recall = wanted ? hits / wanted : 1;
+    const unknown = (key) => lines.reduce((total, line) => total + line.unknown[key].length, 0);
     return {
         lines: lines.length,
         exact: lines.filter(({right}) => right).length,
         precision,
         recall,
         f1: precision + recall ? 2 * precision * recall / (precision + recall) : 0,
+        unknown: {words: unknown('words'), names: unknown('names'), notLookedUp: unknown('notLookedUp')},
     };
 }
 
@@ -495,6 +521,10 @@ const sets = [...groupBy(scored, 'set')].sort(([a], [b]) => a.localeCompare(b)).
 const devErrors = scored.filter(({set, right}) => set === 'dev' && !right)
     .flatMap((line) => line.stretches.map((stretch) => ({...stretch, id: line.id, title: line.title, text: line.text, line: line.expected, got: line.actual})));
 const kinds = [...groupBy(devErrors, 'kind')].sort((a, b) => b[1].length - a[1].length);
+const devUnknown = scored.filter(({set}) => set === 'dev').flatMap(({id, title, text, unknown}) => [
+    ...unknown.words.map((word) => ({id, title, text, word, name: false})),
+    ...unknown.names.map((word) => ({id, title, text, word, name: true})),
+]);
 
 // ---- Report --------------------------------------------------------------------------------------------------------
 
@@ -510,13 +540,15 @@ const provenance = {
 };
 
 const percent = (value) => `${(value * 100).toFixed(1)}%`;
-const row = ({lines, exact, precision, recall, f1}) => `${String(exact).padStart(4)}/${String(lines).padEnd(4)} ${percent(exact / lines).padStart(6)}   `
-    + `P ${percent(precision).padStart(6)}  R ${percent(recall).padStart(6)}  F1 ${percent(f1).padStart(6)}`;
+const row = ({lines, exact, precision, recall, f1, unknown}) => `${String(exact).padStart(4)}/${String(lines).padEnd(4)} ${percent(exact / lines).padStart(6)}   `
+    + `P ${percent(precision).padStart(6)}  R ${percent(recall).padStart(6)}  F1 ${percent(f1).padStart(6)}   `
+    + `unknown ${String(unknown.words).padStart(3)}  names ${String(unknown.names).padStart(3)}  digits ${String(unknown.notLookedUp).padStart(3)}`;
 
 console.log(`Dictionaries: ${dictionaries.map(({title, revision}) => `${title} (${revision})`).join(', ')}`);
 console.log(`Code: ${provenance.commit}${provenance.dirty ? ' with changes to client/src' : ''}, segmenter.js ${segmenterHash}, Yomitan ${provenance.yomitan}`);
 console.log(`${scored.length} lines in ${seconds.toFixed(1)} s, ${misses} of ${windows.size} windows looked up, the rest kept from earlier runs\n`);
-console.log('Exact lines, then word boundaries');
+console.log('Exact lines, then word boundaries, then expected words split right but with no entry: words, names (@), and');
+console.log('digits or Latin letters, which are never looked up');
 for (const set of sets) {
     console.log(`${set.set.padEnd(28)} ${row(set)}`);
     for (const title of set.titles) {
@@ -535,6 +567,14 @@ if (devErrors.length > 0) {
     }
 }
 
+if (devUnknown.length > 0) {
+    const limit = options.errors === 'all' ? Infinity : Number(options.errors);
+    console.log(`\nWords on dev split right but with no entry (${devUnknown.length}), names marked @`);
+    for (const {id, title, text, word, name} of devUnknown.slice(0, limit)) {
+        console.log(`  ${id ?? title}  ${name ? '@' : ''}${word}   in ${text}`);
+    }
+}
+
 if (options.json) {
-    writeFileSync(options.json, `${JSON.stringify({options, provenance, sets, kinds: Object.fromEntries(kinds.map(([kind, items]) => [kind, items.length])), devErrors}, null, 1)}\n`);
+    writeFileSync(options.json, `${JSON.stringify({options, provenance, sets, kinds: Object.fromEntries(kinds.map(([kind, items]) => [kind, items.length])), devErrors, devUnknown}, null, 1)}\n`);
 }

@@ -146,7 +146,9 @@ scripts/segmentation/server.sh reset                                            
 The scorer runs `client/src/segmenter.js` and the engine from source in Node, so a change to the splitter needs no build.
 It keeps what the Translator found for each window in `corpus/.cache/`, so a run that changes only the splitter takes a
 few seconds and needs no server. It reports exact lines and word boundaries per set and per title, the dictionaries and
-code it ran, and dev's errors sorted into rough kinds. Without `corpus/labels.json` it says so and does nothing.
+code it ran, and dev's errors sorted into rough kinds. It also counts unknown words: words split where the label splits
+them but with no dictionary entry, so with no popup, which the boundaries alone would score as right. Names (`@`), and
+digits and Latin letters, which are never looked up, are counted apart. Without `corpus/labels.json` it says so and does nothing.
 
 ## Checks on real devices
 
