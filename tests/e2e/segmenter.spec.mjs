@@ -140,6 +140,18 @@ test('katakana the dictionary lacks stays together', async () => {
     expect(words.map(({text}) => text)).toEqual(['ジョルジュ', 'は']);
 });
 
+test('katakana the dictionary only has as the reading of rare kanji is still a word', async () => {
+    // As JMdict has it: one row, under ateji nobody writes, so with their score.
+    const entry = (surface, term, reading, matchSource, score) => ({
+        score,
+        headwords: [{term, reading, sources: [{originalText: surface, matchSource}]}],
+    });
+    const scan = async (window) => [entry('コーヒー', '珈琲', 'コーヒー', 'reading', -200), entry('は', 'は', 'は', 'term', 1e6)]
+        .filter(({headwords: [{sources: [{originalText}]}]}) => window.startsWith(originalText));
+    const words = await segmentText('はコーヒー', scan);
+    expect(words.map(({text, known, term}) => [text, known, term])).toEqual([['は', true, 'は'], ['コーヒー', true, '珈琲']]);
+});
+
 test('a known word carries its dictionary form', async () => {
     const [word] = await segmentText('行った', fakeScan({行った: '行く'}));
     expect(word).toMatchObject({term: '行く', known: true});

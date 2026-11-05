@@ -141,6 +141,7 @@ const WEAK_INFLECTION_LENGTH = 4;
 // つ counts on its own, as in １つ, where other counters are words the dictionary has.
 const NUMBER = /^[0-9０-９]+つ?/;
 const KATAKANA_RUN = /^[\u30A1-\u30FA\u30FCｦ-ﾝ]+/;
+const KATAKANA_WORD = /^[\u30A1-\u30FA\u30FC]+$/;
 // A kanji word plus one of these is that word and that particle. か and に are left out: 確か and 特に are words.
 const KANJI_WORD_TAIL = /[はがをでとものへねよ]/;
 // Inside a span these suggest several words. か, の and よ are too often just part of one, as in 確かに.
@@ -171,13 +172,16 @@ function isFolded(surface, term) {
 }
 
 /** @returns {number} The cost of a word if this entry is the best explanation of it. */
-function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surface, term, {matchSource = 'term'}) {
+function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surface, {term, reading = term}, {matchSource = 'term'}) {
     if (NAME_DICTIONARY.test(definitions?.[0]?.dictionary ?? '')) {
         return HAS_HIRAGANA.test(surface) ? COST.nameWithHiragana : COST.name;
     }
 
     const level = commonness(score);
-    const written = matchSource === 'term' && !isFolded(surface, term);
+    // A reading in katakana is how the word is written. JMdict files コーヒー under 珈琲, which hardly anyone uses, with
+    // the kanji's low score, so as a reading it would lose to the same katakana with no entry at all.
+    const spelled = matchSource === 'term' ? term : reading;
+    const written = (matchSource === 'term' || KATAKANA_WORD.test(reading)) && !isFolded(surface, spelled);
     let cost = COST[level][written ? 'term' : 'reading'];
     if ((level === 'uncommon' || level === 'rare') && HAS_KANJI.test(surface) && HAS_HIRAGANA.test(surface)) {
         cost += COST.rarePhraseCharacter * Math.max(0, surface.length - 3);
@@ -215,7 +219,7 @@ export function candidatesFrom(dictionaryEntries) {
                     continue;
                 }
 
-                const cost = entryCost(entry, originalText, term, source);
+                const cost = entryCost(entry, originalText, {term, reading}, source);
                 const best = candidates.get(originalText.length);
                 if (!best || cost < best.cost) {
                     candidates.set(originalText.length, {cost, term, reading, priority: (entry.score ?? 0) >= PRIORITY_SCORE});

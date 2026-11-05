@@ -100,7 +100,8 @@ for (const [name, viewport, line, word, term] of [
     ['desktop', {width: 1280, height: 720}, LINES.plain, '行きませんでした', '行く'],
     ['phone portrait', {width: 412, height: 839}, LINES.plain, '行きませんでした', '行く'],
     ['phone landscape', {width: 839, height: 412}, LINES.plain, '行きませんでした', '行く'],
-    ['phone portrait, a short word', {width: 412, height: 839}, LINES.coffee, 'コーヒー', 'コーヒー'],
+    // JMdict files コーヒー under 珈琲, so that is the headword, with コーヒー as its furigana.
+    ['phone portrait, a short word', {width: 412, height: 839}, LINES.coffee, 'コーヒー', '珈琲'],
     ['phone landscape, the longest kind of entry', {width: 839, height: 412}, LINES.twoLines, 'の', 'の'],
 ]) {
     test(`a screenshot at ${name}`, async ({page}, testInfo) => {

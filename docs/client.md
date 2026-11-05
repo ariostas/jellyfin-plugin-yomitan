@@ -342,7 +342,9 @@ turned out to fail on real text: with JMnedict loaded, `君のことなんて` b
 Instead every candidate gets a cost, and the cheapest path through the line wins. The numbers are in `COST` in
 `segmenter.js`, and the comments there say why each exists. About 1 per word, so fewer words is better, and more for weak
 evidence: a name, a rare word, hiragana that only matches a kanji word's reading, or a span that is really a word plus a
-particle. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
+particle. Katakana that matches a reading counts as written, though: JMdict has words like `コーヒー` only under kanji
+hardly anyone writes, `珈琲`, with their low score, and as a reading it would lose to the same katakana with no entry at
+all. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what
 the rule was for, but it still changes 17 of 1,847 lines of real subtitles, nearly all for the better, such as
 `の/デパート` over `のデ/パート`.
