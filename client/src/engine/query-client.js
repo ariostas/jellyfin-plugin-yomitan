@@ -1,5 +1,6 @@
 // Talks to POST /Yomitan/Query. Every request also carries getDictionaryInfo, which runs in the same read transaction,
 // so a replaced dictionary shows up in the very response that first uses it.
+import {apiFetch} from '../api.js';
 
 export class QueryError extends Error {}
 
@@ -112,12 +113,9 @@ export class QueryClient {
         const {signal, done} = withTimeout(callerSignal);
         let results;
         try {
-            const response = await fetch(apiClient.getUrl('Yomitan/Query'), {
+            const response = await apiFetch(apiClient, 'Yomitan/Query', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `MediaBrowser Token="${apiClient.accessToken()}"`,
-                },
+                headers: {'Content-Type': 'application/json'},
                 body,
                 signal,
             });

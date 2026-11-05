@@ -29,8 +29,7 @@ function hide() {
  */
 export function showNotice(content, ms = SHOW_MS) {
     if (!region) {
-        region = element('div', {class: 'yomitan-notices', role: 'status'});
-        region.style.cssText = REGION_STYLE;
+        region = element('div', {class: 'yomitan-notices', role: 'status', style: REGION_STYLE});
     }
 
     hide();
@@ -40,8 +39,7 @@ export function showNotice(content, ms = SHOW_MS) {
         parent.append(region);
     }
 
-    const notice = element('div', {class: 'yomitan-notice'}, content);
-    notice.style.cssText = STYLE;
+    const notice = element('div', {class: 'yomitan-notice', style: STYLE}, content);
     shown = notice;
     region.append(notice);
     timer = setTimeout(hide, ms);

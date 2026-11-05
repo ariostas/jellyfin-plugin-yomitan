@@ -166,8 +166,9 @@ test.describe('engine.js', () => {
         const {text} = await rawRequest('/web/');
         const script = new URL(tags(text)[0][1], `${server.url}/web/`);
         const loader = await rawRequest(`/Yomitan/client.js${script.search}`, {headers: {'Accept-Encoding': 'br'}});
-        // 5 KB as of Phase 6, which added the settings store and the OSD's button. Every page loads this.
-        expect(loader.body.length).toBeLessThan(6 * 1024);
+        // 5.1 KB as of 0.1.0, after what the settings page or a video can wait for left it. Every page loads this, so the
+        // limit is close: what does not need to be on every page belongs in settings-page.js or the engine.
+        expect(loader.body.length).toBeLessThan(5.5 * 1024);
     });
 
     test('it carries Yomitan\'s license notice', async () => {

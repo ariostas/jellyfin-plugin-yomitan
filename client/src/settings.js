@@ -4,6 +4,9 @@
 // The server holds them, per user. localStorage is only the last copy this browser saw of each user's settings, so
 // playback never waits on the network: a value is there at once, and whatever the server says arrives as a `change`
 // event. A change is kept in the cache too until the server has taken it, so it survives a reload or a dead network.
+//
+// This is in the loader, on every page, so its members are private (#), which the minifier shortens.
+import {apiFetch} from './api.js';
 
 const STORAGE_PREFIX = 'yomitan.settings.';
 /** A slider sends many changes. Waiting this long makes them one request. */
@@ -39,8 +42,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     introSeen: false,
 });
 
-/** The same bounds as the server's, which is what enforces them. Here they only shape the controls. */
-export const SETTING_BOUNDS = Object.freeze({
+/**
+ * The same bounds as the server's, which is what enforces them. Here they only shape the controls. Marked pure so that
+ * the loader, which has no controls, leaves it out.
+ */
+export const SETTING_BOUNDS = /* @__PURE__ */ Object.freeze({
     hoverDelayMs: {min: 0, max: 5000},
     hoverGraceMs: {min: 0, max: 5000},
     fontScale: {min: 50, max: 300},
@@ -106,40 +112,37 @@ function signedInUser() {
 }
 
 function request(apiClient, method, body) {
-    return fetch(apiClient.getUrl('Yomitan/Settings'), {
+    return apiFetch(apiClient, 'Yomitan/Settings', {
         method,
-        headers: {'Content-Type': 'application/json', Authorization: `MediaBrowser Token="${apiClient.accessToken()}"`},
+        headers: {'Content-Type': 'application/json'},
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 }
 
 export class Settings extends EventTarget {
-    constructor() {
-        super();
-        this._userId = null;
-        this._values = {...DEFAULT_SETTINGS};
-        /** Changes the server has not taken yet. @type {Partial<typeof DEFAULT_SETTINGS>} */
-        this._pending = {};
-        /** The newest revision seen, so that an answer overtaken by another changes nothing. */
-        this._revision = -1;
-        this._writeTimer = 0;
-        this._writing = false;
-        this._attempts = 0;
-        this._refreshing = null;
-        this._refreshedAt = 0;
-        /** See {@link Settings#syncState}. */
-        this._syncState = 'saved';
-    }
+    #userId = null;
+    #values = {...DEFAULT_SETTINGS};
+    /** Changes the server has not taken yet. @type {Partial<typeof DEFAULT_SETTINGS>} */
+    #pending = {};
+    /** The newest revision seen, so that an answer overtaken by another changes nothing. */
+    #revision = -1;
+    #writeTimer = 0;
+    #writing = false;
+    #attempts = 0;
+    #refreshing = null;
+    #refreshedAt = 0;
+    /** See {@link Settings#syncState}. */
+    #syncState = 'saved';
 
     /** @returns {'saved'|'saving'|'retrying'|'refused'} Whether this user's changes have reached the server. */
     get syncState() {
-        return this._syncState;
+        return this.#syncState;
     }
 
     /** @returns {string|null} Whose settings these are, or null if nobody is signed in, when they are the defaults. */
     get userId() {
-        return this._userId;
+        return this.#userId;
     }
 
     /**
@@ -147,7 +150,7 @@ export class Settings extends EventTarget {
      * @returns {boolean|number|readonly string[]|null}
      */
     get(name) {
-        return this._values[name];
+        return this.#values[name];
     }
 
     /**
@@ -162,19 +165,19 @@ export class Settings extends EventTarget {
         }
 
         this.follow();
-        if (isSame(this._values[name], value)) {
+        if (isSame(this.#values[name], value)) {
             return;
         }
 
-        this._values[name] = value;
-        if (this._userId) {
-            this._pending[name] = value;
-            this._saveCache();
-            this._setSyncState('saving');
-            this._scheduleWrite(WRITE_DELAY_MS);
+        this.#values[name] = value;
+        if (this.#userId) {
+            this.#pending[name] = value;
+            this.#saveCache();
+            this.#setSyncState('saving');
+            this.#scheduleWrite(WRITE_DELAY_MS);
         }
 
-        this.dispatchEvent(new CustomEvent('change', {detail: {name, value}}));
+        this.#emit('change', {name, value});
     }
 
     /**
@@ -183,23 +186,23 @@ export class Settings extends EventTarget {
      */
     follow() {
         const id = signedInUser()?.id ?? null;
-        if (id === this._userId) {
+        if (id === this.#userId) {
             return;
         }
 
-        clearTimeout(this._writeTimer);
-        this._writeTimer = 0;
-        this._attempts = 0;
-        this._revision = -1;
-        this._refreshing = null;
-        this._userId = id;
+        clearTimeout(this.#writeTimer);
+        this.#writeTimer = 0;
+        this.#attempts = 0;
+        this.#revision = -1;
+        this.#refreshing = null;
+        this.#userId = id;
         const {values, pending} = id ? readCache(id) : {values: {}, pending: {}};
-        this._pending = pending;
-        this._setSyncState(Object.keys(pending).length > 0 ? 'saving' : 'saved');
-        this._replace({...DEFAULT_SETTINGS, ...values, ...pending});
+        this.#pending = pending;
+        this.#setSyncState(this.#hasPending() ? 'saving' : 'saved');
+        this.#replace({...DEFAULT_SETTINGS, ...values, ...pending});
         if (id) {
             this.refresh({force: true});
-            this._scheduleWrite(0);
+            this.#scheduleWrite(0);
         }
     }
 
@@ -211,143 +214,151 @@ export class Settings extends EventTarget {
      */
     refresh({force = false} = {}) {
         const user = signedInUser();
-        if (!user || user.id !== this._userId) {
+        if (!user || user.id !== this.#userId) {
             return Promise.resolve();
         }
 
-        if (!force && performance.now() - this._refreshedAt < REFRESH_INTERVAL_MS) {
-            return this._refreshing ?? Promise.resolve();
+        if (!force && performance.now() - this.#refreshedAt < REFRESH_INTERVAL_MS) {
+            return this.#refreshing ?? Promise.resolve();
         }
 
-        this._refreshedAt = performance.now();
-        if (!this._refreshing) {
-            const refreshing = this._fetch(user).finally(() => {
-                if (this._refreshing === refreshing) {
-                    this._refreshing = null;
+        this.#refreshedAt = performance.now();
+        if (!this.#refreshing) {
+            const refreshing = this.#fetch(user).finally(() => {
+                if (this.#refreshing === refreshing) {
+                    this.#refreshing = null;
                 }
             });
-            this._refreshing = refreshing;
+            this.#refreshing = refreshing;
         }
 
-        return this._refreshing;
+        return this.#refreshing;
     }
 
-    async _fetch({apiClient, id}) {
+    async #fetch({apiClient, id}) {
         try {
             const response = await request(apiClient, 'GET');
             if (!response.ok) {
                 throw new Error(`Yomitan/Settings returned ${response.status}`);
             }
 
-            this._accept(id, await response.json());
+            this.#accept(id, await response.json());
         } catch (error) {
-            console.debug('[yomitan] using the settings this browser last saw:', error);
+            console.debug('[yomitan] using the cached settings:', error);
         }
     }
 
     /** Takes what the server sent, unless it is for someone else, or older than what is here. */
-    _accept(userId, {revision, settings}) {
-        if (userId !== this._userId || revision < this._revision) {
+    #accept(userId, {revision, settings}) {
+        if (userId !== this.#userId || revision < this.#revision) {
             return;
         }
 
-        this._revision = revision;
-        this._replace({...DEFAULT_SETTINGS, ...copyValid(settings), ...this._pending});
+        this.#revision = revision;
+        this.#replace({...DEFAULT_SETTINGS, ...copyValid(settings), ...this.#pending});
     }
 
     /** Moves to these values, and tells everyone what changed. */
-    _replace(values) {
-        const changed = Object.keys(DEFAULT_SETTINGS).filter((name) => !isSame(this._values[name], values[name]));
-        this._values = values;
-        this._saveCache();
+    #replace(values) {
+        const changed = Object.keys(DEFAULT_SETTINGS).filter((name) => !isSame(this.#values[name], values[name]));
+        this.#values = values;
+        this.#saveCache();
         for (const name of changed) {
-            this.dispatchEvent(new CustomEvent('change', {detail: {name, value: values[name]}}));
+            this.#emit('change', {name, value: values[name]});
         }
     }
 
-    _saveCache() {
-        if (this._userId) {
-            writeCache(this._userId, this._values, this._pending);
+    #emit(type, detail) {
+        this.dispatchEvent(new CustomEvent(type, {detail}));
+    }
+
+    #hasPending() {
+        return Object.keys(this.#pending).length > 0;
+    }
+
+    #saveCache() {
+        if (this.#userId) {
+            writeCache(this.#userId, this.#values, this.#pending);
         }
     }
 
-    _setSyncState(state) {
-        if (this._syncState !== state) {
-            this._syncState = state;
-            this.dispatchEvent(new CustomEvent('syncstate', {detail: {state}}));
+    #setSyncState(state) {
+        if (this.#syncState !== state) {
+            this.#syncState = state;
+            this.#emit('syncstate', {state});
         }
     }
 
-    _scheduleWrite(delay) {
-        clearTimeout(this._writeTimer);
-        this._writeTimer = 0;
-        if (Object.keys(this._pending).length > 0) {
-            this._writeTimer = setTimeout(this._write, delay);
+    #scheduleWrite(delay) {
+        clearTimeout(this.#writeTimer);
+        this.#writeTimer = 0;
+        if (this.#hasPending()) {
+            this.#writeTimer = setTimeout(this.#write, delay);
         }
     }
 
-    _retryWrite() {
-        const delay = RETRY_DELAYS_MS[Math.min(this._attempts, RETRY_DELAYS_MS.length - 1)];
-        this._attempts += 1;
-        this._setSyncState('retrying');
-        this._scheduleWrite(delay);
+    #retryWrite() {
+        const delay = RETRY_DELAYS_MS[Math.min(this.#attempts, RETRY_DELAYS_MS.length - 1)];
+        this.#attempts += 1;
+        this.#setSyncState('retrying');
+        this.#scheduleWrite(delay);
     }
 
-    _write = async () => {
-        this._writeTimer = 0;
+    #write = async () => {
+        this.#writeTimer = 0;
         // The token is whoever is signed in now, and the server stores under the token. So a write must never leave
         // for anyone but the user it belongs to. It stays in that user's cache until they are back.
         const user = signedInUser();
-        if (this._writing || !user || user.id !== this._userId) {
+        if (this.#writing || !user || user.id !== this.#userId) {
             return;
         }
 
-        const sent = {...this._pending};
-        this._writing = true;
+        const sent = {...this.#pending};
+        this.#writing = true;
         try {
             const response = await request(user.apiClient, 'PUT', sent);
-            if (user.id !== this._userId) {
+            if (user.id !== this.#userId) {
                 // The user left during the request. If the server took it, it must not be sent again.
                 if (response.ok) {
-                    this._forget(user.id, sent);
+                    this.#forget(user.id, sent);
                 }
             } else if (response.ok) {
                 // Read first: a refresh answering during this await must still see these as waiting.
                 const saved = await response.json();
-                this._attempts = 0;
-                this._takeBack(sent);
-                this._accept(user.id, saved);
-                this._setSyncState(Object.keys(this._pending).length > 0 ? 'saving' : 'saved');
+                this.#attempts = 0;
+                this.#takeBack(sent);
+                this.#accept(user.id, saved);
+                this.#setSyncState(this.#hasPending() ? 'saving' : 'saved');
             } else if (response.status >= 400 && response.status < 500 && !WORTH_REPEATING.has(response.status)) {
-                await this._refused(user, sent, response);
+                await this.#refused(user, sent, response);
             } else {
-                this._retryWrite();
+                this.#retryWrite();
             }
         } catch (error) {
-            console.debug('[yomitan] a setting did not reach the server, and will be sent again:', error);
-            if (user.id === this._userId) {
-                this._retryWrite();
+            console.debug('[yomitan] a setting will be sent again:', error);
+            if (user.id === this.#userId) {
+                this.#retryWrite();
             }
         } finally {
-            this._writing = false;
+            this.#writing = false;
         }
 
         // Anything set during the request has been waiting for this.
-        if (this._writeTimer === 0 && this._syncState !== 'retrying') {
-            this._scheduleWrite(0);
+        if (this.#writeTimer === 0 && this.#syncState !== 'retrying') {
+            this.#scheduleWrite(0);
         }
     };
 
     /** Forgets what was sent, apart from anything changed since. */
-    _takeBack(sent) {
+    #takeBack(sent) {
         for (const [name, value] of Object.entries(sent)) {
-            if (isSame(this._pending[name], value)) {
-                delete this._pending[name];
+            if (isSame(this.#pending[name], value)) {
+                delete this.#pending[name];
             }
         }
     }
 
-    _forget(userId, sent) {
+    #forget(userId, sent) {
         const {values, pending} = readCache(userId);
         for (const [name, value] of Object.entries(sent)) {
             if (isSame(pending[name], value)) {
@@ -359,18 +370,18 @@ export class Settings extends EventTarget {
     }
 
     /** The server said no, and saying the same thing again will not help. Its values go back on screen. */
-    async _refused(user, sent, response) {
+    async #refused(user, sent, response) {
         const {error} = await response.json().catch(() => ({}));
         console.warn(`[yomitan] the server refused a setting (${response.status}):`, error?.message);
         if (response.status === 401 || response.status === 403) {
             // Not a judgement on the value. The next sign-in sends it again.
-            this._setSyncState('retrying');
+            this.#setSyncState('retrying');
             return;
         }
 
-        this._takeBack(sent);
-        this._revision = -1;
-        await this._fetch(user);
-        this._setSyncState('refused');
+        this.#takeBack(sent);
+        this.#revision = -1;
+        await this.#fetch(user);
+        this.#setSyncState('refused');
     }
 }

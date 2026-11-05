@@ -15,8 +15,10 @@ const version = (await readFile(new URL('../VERSION', import.meta.url), 'utf8'))
 const noticedPackages = new Set(['kanji-processor']);
 
 // What each script may weigh gzipped, in KB, since that is about what crosses the network. The loader is on every page of
-// jellyfin-web, and the engine starts every video. tests/e2e/injection.spec.mjs checks what the server sends.
-const budgets = {'client.js': 6, 'engine.js': 110, 'settings-page.js': 5, 'admin.js': 5};
+// jellyfin-web, and the engine starts every video. tests/e2e/injection.spec.mjs checks what the server sends. The loader's
+// is about 7% over what it weighs, so that something it needs fits and anything that could wait for a video or the
+// settings page goes to them instead.
+const budgets = {'client.js': 5, 'engine.js': 110, 'settings-page.js': 6, 'admin.js': 5};
 
 const licenseBanner = `/*
  * Jellyfin Yomitan client. Copyright (C) the Jellyfin Yomitan contributors. GPL-3.0.

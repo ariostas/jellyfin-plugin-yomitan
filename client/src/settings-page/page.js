@@ -4,6 +4,7 @@
 //
 // It only ever talks to the settings store, apart from listing the dictionaries. Titles come from a zip anyone can
 // write, and only ever go on screen as text.
+import {apiFetchOk} from '../api.js';
 import {orderDictionaries} from '../engine/dictionary-set.js';
 import {entersWithUpOnly, SETTING_BOUNDS} from '../settings.js';
 import {element, formatCount, formatSize, installStyle} from '../ui/dom.js';
@@ -176,14 +177,7 @@ class DictionaryList {
 
     async load() {
         try {
-            const {ApiClient: apiClient} = window;
-            const response = await fetch(apiClient.getUrl('Yomitan/Dictionaries'), {
-                headers: {Authorization: `MediaBrowser Token="${apiClient.accessToken()}"`},
-            });
-            if (!response.ok) {
-                throw new Error(`Yomitan/Dictionaries returned ${response.status}`);
-            }
-
+            const response = await apiFetchOk(window.ApiClient, 'Yomitan/Dictionaries');
             ({dictionaries: this._dictionaries} = await response.json());
             this.update();
         } catch (error) {

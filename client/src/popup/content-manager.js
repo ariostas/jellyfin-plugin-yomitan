@@ -2,6 +2,7 @@
 // StructuredContentGenerator hand images over by callback, and draw an <img>. Its other mode draws to a canvas through
 // the extension's backend.
 import {AnkiTemplateRendererContentManager} from '../../../third_party/yomitan/ext/js/templates/anki-template-renderer-content-manager.js';
+import {apiFetchOk} from '../api.js';
 import {safeLink} from './sanitize.js';
 
 /** A popup is for reading one word, and this keeps a bad dictionary from asking the server for thousands of files. */
@@ -46,15 +47,7 @@ export class ContentManager extends AnkiTemplateRendererContentManager {
     }
 
     async _load({path, dictionary, onLoad, onUnload}, root, signal) {
-        const url = this._apiClient.getUrl('Yomitan/Media', {dictionary, path});
-        const response = await fetch(url, {
-            headers: {Authorization: `MediaBrowser Token="${this._apiClient.accessToken()}"`},
-            signal,
-        });
-        if (!response.ok) {
-            throw new Error(`Yomitan/Media returned ${response.status}`);
-        }
-
+        const response = await apiFetchOk(this._apiClient, 'Yomitan/Media', {query: {dictionary, path}, signal});
         const blob = await response.blob();
         if (signal.aborted) {
             return;

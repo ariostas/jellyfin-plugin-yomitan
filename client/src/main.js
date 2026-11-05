@@ -61,7 +61,7 @@ function load() {
             }
         };
 
-        const toggle = new PlayerToggle({playbackManager, events, settings, loadIntro: loadSettingsPage});
+        const toggle = new PlayerToggle({playbackManager, events, settings, loadSettingsPage});
         let started = false;
         const startEngine = async () => {
             if (started || !settings.get('enabled')) {
@@ -74,7 +74,7 @@ function load() {
                 state.playback = startPlugin({playbackManager, events, settings});
                 toggle.watch(state.playback);
             } catch (error) {
-                console.warn('[yomitan] the engine failed to load, so subtitles stay as they are:', error);
+                console.warn('[yomitan] the engine failed to load:', error);
                 started = false;
                 toggle.report('failed');
             }

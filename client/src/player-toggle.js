@@ -1,11 +1,12 @@
 // The button in the OSD that turns the plugin on and off during playback. `enabled` is off by default, so this is where
 // most people meet it. It stands next to the subtitle button, and is only there for a track the plugin could do
 // something with. With the feature off, the engine is not loaded and the session that decides this does not exist, so
-// the decision is made here, with the same functions the session uses.
+// the decision is made here, with the same functions the session uses. A track with no language tag is rare, and only
+// its text can decide, so what reads it is in the settings page's script, which this fetches for it.
 //
 // Everything here reads jellyfin-web's DOM, which is not a contract. Anything missing means no button, and nothing else.
-import {isJapaneseTrack, languageNeedsText} from './subtitles/language.js';
-import {fetchTimedText, trackContent, trackPath} from './subtitles/source.js';
+import {hasJapaneseTag, languageNeedsText} from './subtitles/language.js';
+import {trackContent} from './subtitles/source.js';
 import {element} from './ui/dom.js';
 import {showNotice} from './ui/notice.js';
 
@@ -19,36 +20,43 @@ const PROBLEM_COLOR = '#ffb300';
 const FAILED = 'Yomitan could not start on this track, so subtitles stay as they are.';
 
 export class PlayerToggle {
+    // Private, which the minifier shortens, as this is in the loader.
+    #manager;
+    #events;
+    #settings;
+    #loadSettingsPage;
+    #timer = 0;
+    #button = null;
+    #trackKey = null;
+    #applies = false;
+    #decision = null;
+    /** What is wrong, in words, or null. */
+    #problem = null;
+    /** Whether the notice that introduces the button has been shown on this page, which is once at most. */
+    #introduced = false;
+    #closeIntro = null;
+
     /**
      * @param {object} options
      * @param {object} options.playbackManager jellyfin-web's playbackManager.
      * @param {object} options.events jellyfin-web's Events.
      * @param {import('./settings.js').Settings} options.settings
-     * @param {() => Promise<{showIntro: Function}>} options.loadIntro Fetches what shows the notice that introduces it.
+     * @param {() => Promise<{showIntro: Function, readsAsJapanese: Function}>} options.loadSettingsPage Fetches the
+     *   settings page's script, which also holds the notice that introduces the button, and what reads an untagged track.
      */
-    constructor({playbackManager, events, settings, loadIntro}) {
-        this._manager = playbackManager;
-        this._events = events;
-        this._settings = settings;
-        this._loadIntro = loadIntro;
-        this._timer = 0;
-        this._button = null;
-        this._trackKey = null;
-        this._applies = false;
-        this._decision = null;
-        /** What is wrong, in words, or null. */
-        this._problem = null;
-        /** Whether the notice that introduces the button has been shown on this page, which is once at most. */
-        this._introduced = false;
-        this._closeIntro = null;
+    constructor({playbackManager, events, settings, loadSettingsPage}) {
+        this.#manager = playbackManager;
+        this.#events = events;
+        this.#settings = settings;
+        this.#loadSettingsPage = loadSettingsPage;
     }
 
     /** Starts following playback, including one already under way. */
     start() {
-        this._events.on(this._manager, 'playbackstart', this._follow);
-        this._events.on(this._manager, 'playbackstop', this._check);
-        this._settings.addEventListener('change', this._onSettingChanged);
-        this._follow();
+        this.#events.on(this.#manager, 'playbackstart', this.#follow);
+        this.#events.on(this.#manager, 'playbackstop', this.#check);
+        this.#settings.addEventListener('change', this.#onSettingChanged);
+        this.#follow();
     }
 
     /** @param {EventTarget} controller The PlaybackController, to hear from once the engine has started it. */
@@ -62,52 +70,52 @@ export class PlayerToggle {
      * @param {Record<string, string>} [words] What each problem means.
      */
     report(problem, words = {}) {
-        this._problem = problem && (words[problem] ?? FAILED);
-        this._render();
-        if (this._problem && this._settings.get('enabled')) {
-            showNotice(this._problem);
+        this.#problem = problem && (words[problem] ?? FAILED);
+        this.#render();
+        if (this.#problem && this.#settings.get('enabled')) {
+            showNotice(this.#problem);
         }
     }
 
-    _onSettingChanged = ({detail: {name}}) => {
+    #onSettingChanged = ({detail: {name}}) => {
         if (name === 'enabled') {
-            this._problem = null;
-            this._render();
+            this.#problem = null;
+            this.#render();
         }
     };
 
-    _follow = () => {
-        if (this._timer === 0) {
-            this._timer = setInterval(this._check, POLL_INTERVAL_MS);
+    #follow = () => {
+        if (this.#timer === 0) {
+            this.#timer = setInterval(this.#check, POLL_INTERVAL_MS);
         }
 
-        this._check();
+        this.#check();
     };
 
-    _check = () => {
+    #check = () => {
         try {
-            const playing = this._readTrack();
+            const playing = this.#readTrack();
             if (!playing) {
-                this._stop();
+                this.#stop();
                 return;
             }
 
-            this._decide(playing);
-            if (this._applies) {
-                this._place();
-                this._introduce();
+            this.#decide(playing);
+            if (this.#applies) {
+                this.#place();
+                this.#introduce();
             } else {
-                this._remove();
+                this.#remove();
             }
         } catch (error) {
             console.debug('[yomitan] leaving the OSD alone:', error);
-            this._stop();
+            this.#stop();
         }
     };
 
     /** @returns {object|null} The selected track of the video playing now. Null if no video is. */
-    _readTrack() {
-        const manager = this._manager;
+    #readTrack() {
+        const manager = this.#manager;
         const player = manager.getCurrentPlayer();
         if (!player || !manager.isPlayingVideo(player)) {
             return null;
@@ -125,128 +133,132 @@ export class PlayerToggle {
     }
 
     /** Works out once per track whether the button belongs here. */
-    _decide({key, itemId, mediaSourceId, stream}) {
-        if (key === this._trackKey) {
+    #decide({key, itemId, mediaSourceId, stream}) {
+        if (key === this.#trackKey) {
             return;
         }
 
-        this._trackKey = key;
-        this._applies = false;
-        this._problem = null;
-        this._decision?.abort();
-        this._decision = null;
+        this.#forgetTrack(key);
         if (!stream || trackContent(stream) !== 'text') {
             return;
         }
 
         if (!languageNeedsText(stream)) {
-            this._applies = isJapaneseTrack(stream, []);
+            this.#applies = hasJapaneseTag(stream);
             return;
         }
 
         // No tag, so only the text can say. That is one small request, and only for such a track.
         const decision = new AbortController();
-        this._decision = decision;
-        fetchTimedText(window.ApiClient, trackPath(itemId, mediaSourceId, stream), decision.signal).then((cues) => {
-            if (this._decision === decision) {
-                this._applies = isJapaneseTrack(stream, cues);
-                this._check();
+        this.#decision = decision;
+        this.#loadSettingsPage().then(({readsAsJapanese}) => (
+            readsAsJapanese(window.ApiClient, {itemId, mediaSourceId, stream}, decision.signal)
+        )).then((japanese) => {
+            if (this.#decision === decision) {
+                this.#applies = japanese;
+                this.#check();
             }
         }, (error) => {
             console.debug('[yomitan] cannot read this track, so it gets no button:', error);
         });
     }
 
-    _place() {
+    #place() {
         const anchor = document.querySelector(SUBTITLE_BUTTON);
         if (!anchor?.parentElement) {
-            this._remove();
+            this.#remove();
             return;
         }
 
-        if (!this._button) {
-            this._button = this._create();
+        if (!this.#button) {
+            this.#button = this.#create();
         }
 
-        if (this._button.previousElementSibling !== anchor) {
-            anchor.after(this._button);
+        if (this.#button.previousElementSibling !== anchor) {
+            anchor.after(this.#button);
         }
     }
 
-    _create() {
+    #create() {
         // The same classes as its neighbours, so it looks like one. jellyfin-web's focus handling takes any button.
         const button = element(
             'button',
-            {type: 'button', class: 'btnYomitan autoSize paper-icon-button-light', on: {click: this._onClick}},
+            {type: 'button', class: 'btnYomitan autoSize paper-icon-button-light', on: {click: this.#onClick}},
             element('span', {class: 'xlargePaperIconButton material-icons translate', 'aria-hidden': 'true'}),
         );
-        this._button = button;
-        this._render();
+        this.#button = button;
+        this.#render();
         return button;
     }
 
-    _onClick = () => {
-        this._settings.set('enabled', !this._settings.get('enabled'));
+    #onClick = () => {
+        this.#settings.set('enabled', !this.#settings.get('enabled'));
         // Whoever presses it has found it.
-        this._settings.set('introSeen', true);
-        this._closeIntro?.();
+        this.#settings.set('introSeen', true);
+        this.#closeIntro?.();
     };
 
     /**
      * The first time this user plays a track the button is for, with the feature off, a notice says what it is. See
      * settings-page/intro.js. It does not pause, and if anything goes wrong it just does not show.
      */
-    _introduce() {
-        const settings = this._settings;
-        const due = () => this._button?.isConnected && !settings.get('enabled') && !settings.get('introSeen');
-        if (this._introduced || !due()) {
+    #introduce() {
+        const settings = this.#settings;
+        const due = () => this.#button?.isConnected && !settings.get('enabled') && !settings.get('introSeen');
+        if (this.#introduced || !due()) {
             return;
         }
 
-        this._introduced = true;
+        this.#introduced = true;
         // A device that has not seen this user before only has the defaults until the server answers.
         settings.refresh()
-            .then(() => due() && this._loadIntro())
+            .then(() => due() && this.#loadSettingsPage())
             .then((intro) => {
                 if (intro && due()) {
-                    this._closeIntro = intro.showIntro(settings, showNotice);
+                    this.#closeIntro = intro.showIntro(settings, showNotice);
                 }
             })
             .catch((error) => console.debug('[yomitan] no notice:', error));
     }
 
-    _render() {
-        if (!this._button) {
+    #render() {
+        if (!this.#button) {
             return;
         }
 
-        const enabled = this._settings.get('enabled');
-        const label = `Yomitan lookups: ${enabled ? 'on' : 'off'}${this._problem ? `, not working. ${this._problem}` : ''}`;
-        this._button.title = label;
-        this._button.setAttribute('aria-label', label);
-        this._button.setAttribute('aria-pressed', `${enabled}`);
+        const button = this.#button;
+        const enabled = this.#settings.get('enabled');
+        const label = `Yomitan lookups: ${enabled ? 'on' : 'off'}${this.#problem ? `, not working. ${this.#problem}` : ''}`;
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.setAttribute('aria-pressed', `${enabled}`);
         if (enabled) {
-            this._button.style.color = this._problem ? PROBLEM_COLOR : ON_COLOR;
+            button.style.color = this.#problem ? PROBLEM_COLOR : ON_COLOR;
         } else {
-            this._button.style.removeProperty('color');
+            button.style.removeProperty('color');
         }
     }
 
-    _remove() {
-        this._button?.remove();
-        this._button = null;
+    #remove() {
+        this.#button?.remove();
+        this.#button = null;
         // It is about this button and these subtitles.
-        this._closeIntro?.();
+        this.#closeIntro?.();
     }
 
-    _stop() {
-        clearInterval(this._timer);
-        this._timer = 0;
-        this._trackKey = null;
-        this._applies = false;
-        this._problem = null;
-        this._decision?.abort();
-        this._decision = null;
-        this._remove();
+    #stop() {
+        clearInterval(this.#timer);
+        this.#timer = 0;
+        this.#forgetTrack(null);
+        this.#remove();
+    }
+
+    /** Drops what was worked out for the last track, including a decision still on its way. */
+    #forgetTrack(key) {
+        this.#trackKey = key;
+        this.#applies = false;
+        this.#problem = null;
+        this.#decision?.abort();
+        this.#decision = null;
     }
 }

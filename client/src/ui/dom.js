@@ -4,7 +4,7 @@
 /**
  * @param {string} tag
  * @param {Record<string, any>} [properties] Set on the element. `class` is the class name, and anything with a dash an
- *   attribute. `on` maps event types to listeners.
+ *   attribute. `on` maps event types to listeners. `style` takes a string, which sets the inline style's text.
  * @param {...(Node|string|null|undefined|false)} children Strings become text nodes.
  * @returns {HTMLElement}
  */

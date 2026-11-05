@@ -225,6 +225,17 @@ test.describe('it fails safely', () => {
         await page.waitForTimeout(1000);
         await expect(page.locator(BUTTON)).toHaveCount(0);
     });
+
+    test('when the script that reads an untagged track does not load, that track gets no button, and a tagged one still does', async ({page}) => {
+        // The loader fetches settings-page.js for this, so that it does not carry it on every page.
+        await page.route(/\/Yomitan\/settings-page\.js/, (route) => route.abort());
+        await logIn(page, {settings: {enabled: false}});
+        await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.untagged, minimumTime: 0.5});
+        await page.waitForTimeout(1500);
+        await expect(page.locator(BUTTON)).toHaveCount(0);
+        await setSubtitleTrack(page, TRACKS.japanese);
+        await expect(page.locator(BUTTON)).toHaveCount(1);
+    });
 });
 
 test.describe('with a keyboard or a remote', () => {

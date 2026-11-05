@@ -54,11 +54,20 @@ export function languageNeedsText(stream) {
 }
 
 /**
+ * @param {{Language?: string|null}} stream
+ * @returns {boolean} True for a track tagged Japanese. The loader's button decides with this alone for a tagged track,
+ *   so that it does not carry the counting.
+ */
+export function hasJapaneseTag(stream) {
+    return JAPANESE_TAGS.has(languageTag(stream));
+}
+
+/**
  * The one place that decides whether the plugin takes over a track.
  * @param {{Language?: string|null}} stream A subtitle stream from `playbackManager.subtitleTracks()`.
  * @param {{text: string}[]} cues The track's cues.
  * @returns {boolean} True for a track tagged Japanese, and for an untagged one whose text is.
  */
 export function isJapaneseTrack(stream, cues) {
-    return JAPANESE_TAGS.has(languageTag(stream)) || (languageNeedsText(stream) && looksJapanese(cues.map(({text}) => text)));
+    return hasJapaneseTag(stream) || (languageNeedsText(stream) && looksJapanese(cues.map(({text}) => text)));
 }

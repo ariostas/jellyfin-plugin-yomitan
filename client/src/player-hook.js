@@ -45,7 +45,7 @@ export function findPlaybackManager(onFound) {
         } else if (performance.now() < deadline) {
             setTimeout(attempt, EVENTS_RETRY_MS);
         } else {
-            console.debug('[yomitan] jellyfin-web has no Events object, so the plugin stays out of the way');
+            console.debug('[yomitan] no Events object, so the plugin stays out of the way');
         }
     };
     attempt();

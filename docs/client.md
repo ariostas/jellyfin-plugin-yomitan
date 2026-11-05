@@ -8,10 +8,16 @@ How the code that runs in jellyfin-web fits together. The server's side of the c
 | --- | --- | --- | --- |
 | `client.js` | On every page, by the injected tag | About 5 KB compressed | `src/main.js`, the settings store, the OSD's button, notices, the link to the settings page |
 | `engine.js` | When a video starts with the feature on | About 400 KB, or 110 KB as Jellyfin compresses it | The Translator, the overlay, the popup and input |
-| `settings-page.js` | When someone opens their settings, or the first time the button in the player is there for them | About 10 KB | `src/settings-page/`, and the notice that introduces the button |
+| `settings-page.js` | When someone opens their settings, the first time the button in the player is there for them, or for a text track with no language tag | About 13 KB | `src/settings-page/`, the notice that introduces the button, and what reads an untagged track's text for it |
 | `yomitan-admin.js` | When an admin opens the dashboard page | About 10 KB | `src/admin/`. jellyfin-web imports this one |
 
-`client/build.mjs` builds them all. The content hashes of `engine.js` and `settings-page.js` are compiled into the loader,
+`client/build.mjs` builds them all, and fails when one passes its gzipped budget. The loader's is kept close to what it
+weighs, and `tests/e2e/injection.spec.mjs` checks what the server sends of it, since it is on every page of every user's
+Jellyfin: anything that can wait for a video or for the settings page goes in `engine.js` or `settings-page.js`, which
+the loader imports when it needs them, and a failure to load either leaves Jellyfin as it is. The loader's classes keep
+their state in private (`#`) members, which the minifier shortens.
+
+The content hashes of `engine.js` and `settings-page.js` are compiled into the loader,
 and the server computes the same hash, so `engine.js?v=<hash>` is cached for good and a new build is a new URL. They are
 public, like the rest of jellyfin-web's scripts: none holds data, and everything they ask the server for goes through the
 signed-in API.
@@ -24,6 +30,7 @@ Yomitan's, and the trimmed Translator's results against the full one's.
 
 ```text
 main.js                 keeps the settings, and imports the engine for a video with the feature on
+api.js                  requests to the server as whoever is signed in
 player-hook.js          finds this tab's playbackManager
 player-toggle.js        the button in the OSD
 settings.js             the one settings store, created here and handed to the engine
@@ -31,7 +38,7 @@ ui/
   dom.js                builds elements, and never from a string of markup
   notice.js             a short message over whatever is on screen, in one live region
   settings-link.js      the way to the settings page, in jellyfin-web's Settings
-settings-page/          a user's own settings, and the notice that introduces the button
+settings-page/          a user's own settings, the notice that introduces the button, and reading an untagged track
 admin/                  the dashboard page: its markup, its script and its words for the API's errors
 engine-entry.js         the engine script's exports
 playback/
@@ -116,7 +123,7 @@ With it off, the loader stays on the page with two listeners on `window` (`views
 button adds a `keydown` listener on `window`, for Back, which goes at the first key after it closes. The video and the document have
 the same listeners as with the plugin blocked outright, which `tests/e2e/settings.spec.mjs` counts. `GET /Yomitan/Settings`
 is its only request, apart from one `Stream.js` for a text track with no language tag, which only its text can
-decide.
+decide, and `settings-page.js`, which holds what reads it.
 
 ### Where they live
 
@@ -166,7 +173,9 @@ segmenter sees, since it only reads the engine. Nothing asks the server about a 
 `player-toggle.js` puts a button right after `.btnSubtitles`, in the OSD of the `.page` that is showing. It looks at the
 selected track every 500 ms during video playback, and it is only there for a text track that is Japanese, by the same
 `trackContent()` and `isJapaneseTrack()` the session uses. With the feature off the session does not exist, so the loader
-decides this itself. It presses `enabled`, and everything else follows from that.
+decides this itself. A tag decides at once. A track whose tag says nothing is rare and only its text can decide, so
+what reads it, `readsAsJapanese()`, is in `settings-page.js`, which the loader fetches for it. If that or the track fails
+to load, there is no button. It presses `enabled`, and everything else follows from that.
 
 It is a plain `button` with the classes of its neighbours, so jellyfin-web's focus handling takes it as one more stop in
 the row, and a tap or Enter clicks it. If `.btnSubtitles` is not found, there is no button, and an error stops following
@@ -175,7 +184,7 @@ tooltip say what is wrong, in the words of a notice that says it too. Those word
 `PROBLEMS` in `playback/controller.js`, apart from the engine not loading at all.
 
 **The first time** the button is there with `enabled` off and `introSeen` false, a notice says what the button does, with
-Turn on and Not now. It is `settings-page/intro.js`, in the settings page's script, which the loader only fetches then, so
+Turn on and Not now. It is `settings-page/intro.js`, in the settings page's script, which the loader fetches for it, so
 that the loader on every page stays small. Its tooltip never shows on a phone or a TV, and this is the only other way to learn of it. It waits
 for the settings to come back from the server first, so a new device does not show it again. Either button, Back, or the
 button in the OSD sets `introSeen`, on the server, so it follows the user. A notice nobody answers goes after 20 s, and can

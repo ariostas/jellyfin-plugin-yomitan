@@ -29,7 +29,7 @@ export function addSettingsLink(open) {
 
     const link = element(
         'a',
-        {href: '#', class: `emby-button listItem-border ${LINK_CLASS}`, on: {click: (event) => {
+        {href: '#', class: `emby-button listItem-border ${LINK_CLASS}`, style: 'display:block;margin:0;padding:0', on: {click: (event) => {
             event.preventDefault();
             open();
         }}},
@@ -40,6 +40,5 @@ export function addSettingsLink(open) {
             element('div', {class: 'listItemBody'}, element('div', {class: 'listItemBodyText'}, 'Yomitan')),
         ),
     );
-    link.style.cssText = 'display: block; margin: 0; padding: 0;';
     anchor.after(link);
 }

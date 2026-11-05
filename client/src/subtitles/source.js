@@ -1,4 +1,5 @@
 // Fetches a subtitle track's text from the server.
+import {apiFetchOk} from '../api.js';
 import {parseAss} from './ass.js';
 import {buildCues} from './cleanup.js';
 
@@ -26,20 +27,8 @@ export function trackPath(itemId, mediaSourceId, stream) {
     return `Videos/${itemId}/${mediaSourceId}/Subtitles/${stream.Index}`;
 }
 
-async function fetchTrack(apiClient, url, signal) {
-    const response = await fetch(apiClient.getUrl(url), {
-        headers: {Authorization: `MediaBrowser Token="${apiClient.accessToken()}"`},
-        signal,
-    });
-    if (!response.ok) {
-        throw new Error(`${url} returned ${response.status}`);
-    }
-
-    return response;
-}
-
 async function fetchAssEvents(apiClient, base, codec, signal) {
-    const response = await fetchTrack(apiClient, `${base}/Stream.${codec}`, signal);
+    const response = await apiFetchOk(apiClient, `${base}/Stream.${codec}`, {signal});
     return parseAss(await response.text());
 }
 
@@ -50,7 +39,7 @@ async function fetchAssEvents(apiClient, base, codec, signal) {
  * @returns {Promise<{text: string, start: number, end: number}[]>} The track's events, flattened by the server.
  */
 export async function fetchTimedText(apiClient, base, signal) {
-    const response = await fetchTrack(apiClient, `${base}/Stream.js`, signal);
+    const response = await apiFetchOk(apiClient, `${base}/Stream.js`, {signal});
     const {TrackEvents: events} = await response.json();
     return events.map(({Text: text, StartPositionTicks: start, EndPositionTicks: end}) => (
         {text, start: start / 1e7, end: end / 1e7}
