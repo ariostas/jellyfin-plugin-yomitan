@@ -166,6 +166,53 @@ test('a rare form loses to the common words it splits into', async () => {
     expect((await segmentText('はとても', scan)).map(({text}) => text)).toEqual(['は', 'とても']);
 });
 
+/**
+ * Entries as the Translator gives them, with tags as Engine.scan names them.
+ * @param {[string, string, string[], number?, boolean?, string?][]} rows Surface, term, tags, score, whether it is
+ *   inflected, and its reading if it matched by that.
+ */
+function taggedScan(rows) {
+    return async (window) => rows.filter(([surface]) => window.startsWith(surface)).map(([surface, term, tags, score = 1e6, inflected, reading]) => ({
+        score,
+        definitions: [{dictionary: 'JMdict', tagNames: tags}],
+        inflectionRuleChainCandidates: [{inflectionRules: inflected ? [{name: '-て'}] : []}],
+        headwords: [{term, reading: reading ?? term, sources: [{originalText: surface, matchSource: reading ? 'reading' : 'term'}]}],
+    }));
+}
+
+const splitTagged = async (text, rows) => (await segmentText(text, taggedScan(rows))).map(({text: word}) => word).join('/');
+
+test('a listed phrase that ends in a particle after a word splits, and a compound particle does not', async () => {
+    const rows = [['です', 'です', ['cop']], ['か', 'か', ['prt']], ['ですか', 'ですか', ['exp']], ['に', 'に', ['prt']],
+        ['は', 'は', ['prt']], ['には', 'には', ['exp', 'prt']]];
+    expect(await splitTagged('ですか', rows)).toBe('です/か');
+    expect(await splitTagged('には', rows)).toBe('には');
+});
+
+test('a conjunction that opens a run stays whole, and splits after a word', async () => {
+    const rows = [['だ', 'だ', ['cop']], ['が', 'が', ['prt']], ['だが', 'だが', ['conj']], ['雨', '雨', ['n']]];
+    expect(await splitTagged('だが', rows)).toBe('だが');
+    expect(await splitTagged('雨だが', rows)).toBe('雨/だ/が');
+});
+
+test('a listed phrase that starts with a particle splits, unless its verb is written in kana', async () => {
+    const rows = [['に', 'に', ['prt']], ['なる', 'なる', ['v5r']], ['になる', 'になる', ['exp']], ['と', 'と', ['prt']],
+        ['いう', 'いう', ['v5u']], ['という', 'と言う', ['exp', 'uk']]];
+    expect(await splitTagged('になる', rows)).toBe('に/なる');
+    expect(await splitTagged('という', rows)).toBe('という');
+});
+
+test('an interjection is one word, however it splits', async () => {
+    const rows = [['お', 'お', ['pref']], ['は', 'は', ['prt']], ['よう', 'よう', ['n']], ['おはよう', 'おはよう', ['int'], -200]];
+    expect(await splitTagged('おはよう', rows)).toBe('おはよう');
+});
+
+test('て on its own is the end of a verb', async () => {
+    // As JMdict has it: hiragana that inflects 溜める by its reading, which on its own is weak evidence.
+    const rows = [['ため', 'ため', ['n']], ['て', 'て', ['prt']], ['ためて', '溜める', ['v1'], 1e6, true, 'ためる']];
+    expect(await splitTagged('ためて', rows)).toBe('ためて');
+});
+
 test('digits stay together', async () => {
     const words = await segmentText('2024年', fakeScan({年: '年', 20: '20', 2: '2'}));
     expect(words.map(({text}) => text)).toEqual(['2024', '年']);

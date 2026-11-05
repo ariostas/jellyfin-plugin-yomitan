@@ -97,6 +97,19 @@ export const corpus = [
     {text: '机の上にあったんだ', words: '机/の/上/に/あった/んだ', or: ['机/の/上/に/あった/ん/だ']},
     {text: 'まだいたんだ', words: 'まだ/いた/んだ', or: ['まだ/いた/ん/だ']},
 
+    // Phrases the dictionary lists that a learner wants split: a word and a final particle, a particle and a verb
+    {text: '明日は休みですか', words: '明日/は/休み/です/か'},
+    {text: 'これは何？', words: 'これ/は/何'},
+    {text: '大丈夫なの？', words: '大丈夫/な/の'},
+    {text: '雨なのに出かけた', words: '雨/な/のに/出かけた'},
+    {text: '行こうとする', words: '行こう/と/する'},
+    {text: '見ようとしていた', words: '見よう/と/していた'},
+    // And what stays whole: an interjection, a verb in kana with its ending, and a compound in dictionary form
+    {text: 'おはよう、みんな', words: 'おはよう/みんな'},
+    {text: 'ゴミをためて困る', words: 'ゴミ/を/ためて/困る'},
+    {text: '生まれ変わる日', words: '生まれ変わる/日'},
+    {text: '巻き戻しはできない', words: '巻き戻し/は/できない'},
+
     // Kanji that subtitles rarely give furigana for
     {text: '憂鬱な気分で薔薇を眺める', words: '憂鬱/な/気分/で/薔薇/を/眺める'},
     {text: '経済成長率が低下している', words: '経済成長率/が/低下している', or: ['経済/成長率/が/低下している', '経済成長/率/が/低下している', '経済成長率/が/低下/している', '経済/成長率/が/低下/している', '経済成長/率/が/低下/している']},
@@ -128,7 +141,7 @@ export const heldOut = [
     {text: 'シーターの父は ジャナカ', words: 'シーター/の/父/は/ジャナカ'},
     {text: 'シーターには名前が沢山ある', words: 'シーター/に/は/名前/が/沢山/ある', or: ['シーター/には/名前/が/沢山/ある']},
     {text: 'シーターのもう１つの名前だ', words: 'シーター/の/もう/１つ/の/名前/だ', or: ['シーター/の/もう/１/つ/の/名前/だ', 'シーター/の/もう１つ/の/名前/だ']},
-    {text: 'ダシャラタが王位を渡そうとするが', words: 'ダシャラタ/が/王位/を/渡そう/と/する/が', known: 'とする is a dictionary entry, so this is defensible, though ようとする is と + する.'},
+    {text: 'ダシャラタが王位を渡そうとするが', words: 'ダシャラタ/が/王位/を/渡そう/と/する/が'},
     {text: 'カイケーイーが割って入り', words: 'カイケーイー/が/割って入り', or: ['カイケーイー/が/割って/入り']},
     {text: '彼に尽くしたそうで…', words: '彼/に/尽くした/そう/で', or: ['彼/に/尽くしたそう/で']},
     {text: 'ハンター一人だと危険じゃな', words: 'ハンター/一人/だ/と/危険/じゃ/な', or: ['ハンター/一人/だと/危険/じゃ/な']},
@@ -157,7 +170,7 @@ export const heldOutRoundTwo = [
     {text: '｢彼が助けに来るわ｣ってさ', pattern: '彼/が/助け/に/来る/わ/(って/さ|ってさ)'},
     {text: '猿に乗って帰れよと　皆安全だから', pattern: '猿/に/乗って/帰れ/よ/と/皆/安全/(だから|だ/から)', known: 'Yomitan reads 帰れよ as one imperative form. The popup still gives 帰る.'},
     {text: '信用してなかったとか？', pattern: '(信用/してなかった|信用してなかった)/とか'},
-    {text: 'そうかもね', pattern: '(そう/かも|そうかも)/ね', known: 'そうか is a stronger word than そう, and leaves も alone.'},
+    {text: 'そうかもね', pattern: '(そう/かも|そうかも)/ね'},
     {text: 'いえ　完全に信用してたのよ', pattern: 'いえ/(完全/に|完全に)/(信用/してた|信用してた)/(の/よ|のよ)'},
     {text: '来て欲しかったの', pattern: '来て/欲しかった/の'},
     {text: 'シーター．．．旅でもどう？', pattern: 'シーター/旅/でも/どう'},

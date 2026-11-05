@@ -345,8 +345,18 @@ evidence: a name, a rare word, hiragana that only matches a kanji word's reading
 particle. Katakana that matches a reading counts as written, though: JMdict has words like `コーヒー` only under kanji
 hardly anyone writes, `珈琲`, with their low score, and as a reading it would lose to the same katakana with no entry at
 all. So does kana for a common word whose sense JMdict marks `uk`, usually written in kana, as `ある` is for `有る`.
-The Translator only reads tags in a lookup that asks the server what they mean, so `Engine.scan` gives the segmenter
-their names, from the rows the term store already has, as `tagNames` on each definition and headword. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
+
+**Phrases.** JMdict lists many phrases a learner wants split, and its tags say which. A phrase (`exp`, or `conj` past
+the start of a run) that is a word and a final particle costs more, as `ですか`, `これは` and `なの` do, unless it is
+tagged a particle itself, as compound particles like `には` and `かな` are, or an adverb, as `要するに` is. So does one
+that starts with a particle marking a noun's role, as `になる` and `とする` do, unless its verb is written in kana, as in
+`という` and `によって`, the way Japanese writes a verb that has become grammar. An interjection is one word however it
+is built (`おはよう`), and `て`, `た`, `く` and `ば` alone are always the end of the word before. These rules only look at
+the candidates inside a span, so the search stays one cheapest path. The Translator only reads tags in a lookup that asks
+the server what they mean, so `Engine.scan` gives the segmenter their names, from the rows the term store already has,
+as `tagNames` on each definition and headword.
+
+**The kana boundary.** The rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what
 the rule was for, but it still changes 17 of 1,847 lines of real subtitles, nearly all for the better, such as
 `の/デパート` over `のデ/パート`. Yomitan keeps only the longest match of each dictionary row, so when that one is

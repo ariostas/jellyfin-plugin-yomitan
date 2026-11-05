@@ -162,12 +162,19 @@ const COST = {
     name: 1.5,
     // Names in hiragana or part hiragana are nearly all coincidences, like のこ or 夢の.
     nameWithHiragana: 6,
-    // Each character past the third of a rare phrase. また会う日まで is a title, and four plain words here.
+    // Each character past the third of a rare phrase, or of a rare word's inflected form. また会う日まで is a title,
+    // and four plain words here, and 料理ってい is the rare verb 料理る spanning 料理 + って + い. A rare word in its
+    // dictionary form, like 生まれ変わる, is just a word.
     rarePhraseCharacter: 0.6,
     // A span that splits around a particle is those words, not one: 気がいい is 気 + が + いい.
     phrase: 2,
-    // A kanji word plus a particle, like 今日は, is that word and that particle, though the dictionary has "hello".
+    // A kanji word plus a particle, like 今日は, is that word and that particle, though the dictionary has "hello". So
+    // is a phrase the dictionary lists that ends in a particle, like ですか.
     particleTail: 1.2,
+    // A phrase the dictionary lists that starts with a particle, like になる, is that particle and the rest.
+    particleHead: 1.2,
+    // て, た, く and ば end a verb or adjective, and are never a word of their own: ため + て is ためて.
+    conjugationPiece: 1,
     // A form the deinflector explains, with a matching part of speech, is good evidence of a word. Not for two kana,
     // though: でよ is an imperative of 出る only by accident.
     inflected: 0.85,
@@ -189,6 +196,20 @@ const RARE_SCORE = -10_000;
 const NAME_DICTIONARY = /nedict|\bnames?\b/i;
 /** JMdict's tag for a sense usually written in kana. Jitendex has none. */
 const USUALLY_KANA = 'uk';
+// JMdict's tags for a phrase, a particle and a conjunction.
+const PHRASE = ['exp', 'conj'];
+const EXPRESSION = 'exp';
+const PARTICLE = 'prt';
+const CONJUNCTION = 'conj';
+const ADVERB = 'adv';
+const INTERJECTION = 'int';
+const READ_TAGS = new Set([USUALLY_KANA, ...PHRASE, PARTICLE, ADVERB, INTERJECTION]);
+// Particles that end a conjugation, which Yomitan deinflects: であれば is not であれ + ば, nor もしかしたら
+// もしかし + たら.
+const CONJUGATION_ENDING = new Set(['ば', 'て', 'たら', 'たり']);
+const CONJUGATION_PIECE = /^[てたくば]$/;
+// The case particles, and は and も, which always go with the noun before them.
+const ROLE_PARTICLE = /[はがをにでとへも]/;
 const HAS_HIRAGANA = /[\u3041-\u3096]/;
 const HAS_KANJI = /\p{Script=Han}/u;
 const WEAK_INFLECTION_LENGTH = 4;
@@ -225,8 +246,30 @@ function isFolded(surface, term) {
     return first !== null && other !== null && first !== other;
 }
 
+/** @returns {string[]} The names of an entry's tags that the rules here read, from what Engine.scan gives. */
+function tagNamesOf({definitions = []}) {
+    const names = [];
+    for (const {tagNames = []} of definitions) {
+        for (const name of tagNames) {
+            if (READ_TAGS.has(name)) {
+                names.push(name);
+            }
+        }
+    }
+
+    return names;
+}
+
+/** @returns {*} The same for every entry of one word in one dictionary, and different for anything else. */
+function wordKey(entry) {
+    const sequence = entry.definitions?.[0]?.sequences?.[0] ?? -1;
+    return sequence >= 0 ? sequence * 64 + (entry.dictionaryIndex ?? 0) : entry;
+}
+
+const isInflected = ({inflectionRuleChainCandidates}) => Boolean(inflectionRuleChainCandidates?.some(({inflectionRules}) => inflectionRules.length > 0));
+
 /** @returns {number} The cost of a word if this entry is the best explanation of it. */
-function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surface, {term, reading = term}, {matchSource = 'term'}) {
+function entryCost({score = 0, definitions}, surface, {term, reading = term}, {matchSource = 'term'}, names, inflected) {
     if (NAME_DICTIONARY.test(definitions?.[0]?.dictionary ?? '')) {
         return HAS_HIRAGANA.test(surface) ? COST.nameWithHiragana : COST.name;
     }
@@ -237,14 +280,14 @@ function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surf
     // sense the dictionary marks as usually written in kana, as ある is for 有る, but only in a common word: rare ones
     // are marked too, and このよう would then beat the この + よう it nearly always is.
     const spelled = matchSource === 'term' ? term : reading;
-    const usuallyKana = (level === 'priority' || level === 'common') && !HAS_KANJI.test(surface) && definitions?.some(({tagNames}) => tagNames?.includes(USUALLY_KANA));
+    const usuallyKana = (level === 'priority' || level === 'common') && !HAS_KANJI.test(surface) && names.includes(USUALLY_KANA);
     const written = (matchSource === 'term' || KATAKANA_WORD.test(reading) || usuallyKana) && !isFolded(surface, spelled);
     let cost = COST[level][written ? 'term' : 'reading'];
-    if ((level === 'uncommon' || level === 'rare') && HAS_KANJI.test(surface) && HAS_HIRAGANA.test(surface)) {
+    const rare = level === 'uncommon' || level === 'rare';
+    if (rare && (inflected || names.includes(EXPRESSION)) && HAS_KANJI.test(surface) && HAS_HIRAGANA.test(surface)) {
         cost += COST.rarePhraseCharacter * Math.max(0, surface.length - 3);
     }
 
-    const inflected = inflectionRuleChainCandidates?.some(({inflectionRules}) => inflectionRules.length > 0);
     if (inflected && (surface.length > 2 || HAS_KANJI.test(surface))) {
         cost *= COST.inflected;
     }
@@ -264,11 +307,30 @@ function entryCost({score = 0, definitions, inflectionRuleChainCandidates}, surf
 /**
  * Reduces a Translator result to the best candidate of each length.
  * @param {object[]} dictionaryEntries Entries from `findTerms`, with their sources.
- * @returns {Map<number, {cost: number, term: string, reading: string, priority: boolean}>} By length in UTF-16 units.
+ * @returns {Map<number, {cost: number, term: string, reading: string, priority: boolean, all: Set<string>,
+ *   listed: Set<string>}>} By length in UTF-16 units. `all` gathers the tags of every entry of that length, and
+ *   `listed` those of entries for the text as written and not inflected.
  */
 export function candidatesFrom(dictionaryEntries) {
     const candidates = new Map();
+    const tags = new Map();
+    // JMdict gives each word's spellings as a definition of their own, tagged only `forms`, so a word's tags are
+    // gathered from all its entries, which share its sequence number, or that one would escape every rule that reads
+    // them.
+    const byWord = new Map();
     for (const entry of dictionaryEntries) {
+        const key = wordKey(entry);
+        const names = byWord.get(key);
+        if (names) {
+            names.push(...tagNamesOf(entry));
+        } else {
+            byWord.set(key, tagNamesOf(entry));
+        }
+    }
+
+    for (const entry of dictionaryEntries) {
+        const inflected = isInflected(entry);
+        const names = byWord.get(wordKey(entry));
         for (const {term, reading, sources} of entry.headwords) {
             for (const source of sources) {
                 const {originalText} = source;
@@ -276,10 +338,27 @@ export function candidatesFrom(dictionaryEntries) {
                     continue;
                 }
 
-                const cost = entryCost(entry, originalText, {term, reading}, source);
-                const best = candidates.get(originalText.length);
+                const {length} = originalText;
+                let found = tags.get(length);
+                if (!found) {
+                    found = {all: new Set(), listed: new Set()};
+                    tags.set(length, found);
+                }
+
+                // What the text is as the dictionary lists it, written that way and not inflected, apart from all it
+                // could be.
+                const listed = !inflected && (source.matchSource === 'term' || names.includes(USUALLY_KANA));
+                for (const name of names) {
+                    found.all.add(name);
+                    if (listed) {
+                        found.listed.add(name);
+                    }
+                }
+
+                const cost = entryCost(entry, originalText, {term, reading}, source, names, inflected);
+                const best = candidates.get(length);
                 if (!best || cost < best.cost) {
-                    candidates.set(originalText.length, {cost, term, reading, priority: (entry.score ?? 0) >= PRIORITY_SCORE});
+                    candidates.set(length, {cost, term, reading, priority: (entry.score ?? 0) >= PRIORITY_SCORE, ...found});
                 }
             }
         }
@@ -336,6 +415,43 @@ function hasParticleTail(prefix, last) {
     return SENTENCE_ENDING.test(last) || (prefix.length >= 2 && CASE_ENDING.test(last));
 }
 
+/**
+ * @returns {boolean} True if run[start, end) is a phrase the dictionary lists that ends in a particle after a word, as
+ *   ですか, これは and なの do, so that the standard splits it. Compound particles like には and かな are tagged as
+ *   particles themselves, and may stay whole.
+ */
+function endsInParticle(run, start, end, allCandidates, {listed}) {
+    // A conjunction that opens a run is one word, as だから and しかし are, and so is an adverb, as 要するに is.
+    const opening = start === 0 && listed.has(CONJUNCTION);
+    if (!PHRASE.some((tag) => listed.has(tag)) || listed.has(PARTICLE) || listed.has(ADVERB) || opening) {
+        return false;
+    }
+
+    for (let index = start + 1; index < end; index += 1) {
+        const last = allCandidates[index]?.get(end - index);
+        if (last?.listed.has(PARTICLE) && !CONJUGATION_ENDING.has(run.slice(index, end)) && allCandidates[start].has(index - start)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @returns {boolean} True if run[start, end) is a phrase the dictionary lists that starts with a particle marking a
+ *   noun's role, as になる and とする do: the particle goes with the noun before it. Not if its verb is written in
+ *   kana, as in という and によって, the way Japanese writes a verb that has become grammar, and not for a
+ *   conjunction, where で is the copula, as in であれば.
+ */
+function startsWithParticle(run, start, end, allCandidates, {all}) {
+    const phrase = all.has(EXPRESSION) && !all.has(CONJUNCTION) && !all.has(PARTICLE) && !all.has(USUALLY_KANA);
+    if (!ROLE_PARTICLE.test(run[start]) || !phrase) {
+        return false;
+    }
+
+    return Boolean(allCandidates[start].get(1)?.listed.has(PARTICLE) && allCandidates[start + 1]?.has(end - start - 1));
+}
+
 /** @returns {boolean} True if run[start, end) is really a word, a particle and possibly another word. */
 function splitsAroundParticle(run, start, end, allCandidates, priority) {
     for (let index = start; index < end - 1; index += 1) {
@@ -381,12 +497,18 @@ async function splitRun(run, scan) {
 
         const candidates = await candidatesAt(scanWindow(run, start), scan);
         allCandidates[start] = candidates;
-        for (const [matchLength, {cost, term, reading, priority}] of candidates) {
+        for (const [matchLength, candidate] of candidates) {
+            const {cost, term, reading, priority} = candidate;
             const end = start + matchLength;
             const prefix = run.slice(start, end - 1);
             const tail = hasParticleTail(prefix, run[end - 1]) && candidates.has(matchLength - 1);
-            const phrase = splitsAroundParticle(run, start, end, allCandidates, priority);
-            const total = cost + (tail ? COST.particleTail : 0) + (phrase ? COST.phrase : 0);
+            // An interjection is one word however it is built, as おはよう is, though お + は + よう splits it.
+            const interjection = candidate.listed.has(INTERJECTION) && !candidate.listed.has(EXPRESSION);
+            const phrase = !interjection && splitsAroundParticle(run, start, end, allCandidates, priority);
+            const ending = tail || endsInParticle(run, start, end, allCandidates, candidate);
+            const beginning = startsWithParticle(run, start, end, allCandidates, candidate);
+            const ends = CONJUGATION_PIECE.test(run.slice(start, end)) ? COST.conjugationPiece : 0;
+            const total = cost + (ending ? COST.particleTail : 0) + (beginning ? COST.particleHead : 0) + (phrase ? COST.phrase : 0) + ends;
             consider(start, end, total, {term, reading});
             const drawnOut = elongationAfter(run, end);
             if (drawnOut > 0) {
