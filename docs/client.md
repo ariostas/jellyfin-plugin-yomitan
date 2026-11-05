@@ -354,7 +354,14 @@ that starts with a particle marking a noun's role, as `になる` and `とする
 is built (`おはよう`), and `て`, `た`, `く` and `ば` alone are always the end of the word before. These rules only look at
 the candidates inside a span, so the search stays one cheapest path. The Translator only reads tags in a lookup that asks
 the server what they mean, so `Engine.scan` gives the segmenter their names, from the rows the term store already has,
-as `tagNames` on each definition and headword.
+as `tagNames` on each definition and headword. Jitendex has the same codes, but in its glossaries, as spans of kind
+`part-of-speech-info` and `misc-info`, and the term store reads those once a row as tags too.
+
+**Two scales.** JMdict scores priority words in the hundreds of thousands and other words just below zero. Jitendex
+stars priority words, scores them up to 200 and other words 0, and names rare forms with tags. So a star or a JMdict
+priority score makes a priority word, and a rare-form tag or a JMdict score of -10,000 or less a rare one. A score of
+0 is an ordinary word in a dictionary that stars, which shows in the entries of nearly any window, and a common one in a
+dictionary that scores everything 0.
 
 **The kana boundary.** The rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what

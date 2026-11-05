@@ -213,6 +213,24 @@ test('て on its own is the end of a verb', async () => {
     expect(await splitTagged('ためて', rows)).toBe('ためて');
 });
 
+test('a starred entry is a priority word on any scale', async () => {
+    // As Jitendex has it: priority words starred and scored about 200, others 0. Unstarred, です would pay as で + す.
+    const rows = [['です', 'です', ['★'], 200], ['で', 'で', ['prt', '★'], 200], ['す', '巣', ['★'], 200, false, 'す']];
+    expect(await splitTagged('です', rows)).toBe('です');
+});
+
+test('in a dictionary that stars, a score of zero is an ordinary word, not a common one', async () => {
+    // As Jitendex scores them: 実験 is starred, 験する is not, and in JMdict it would score below zero.
+    const rows = [['実験', '実験', ['★'], 200], ['実', '実', ['★'], 200], ['してる', 'する', ['★'], 200, true],
+        ['験', '験', ['★'], 200], ['験してる', '験する', [], 0, true]];
+    expect(await splitTagged('実験してる', rows)).toBe('実験/してる');
+});
+
+test('in a dictionary that scores everything zero, zero is a common word', async () => {
+    const rows = [['行きませんでした', '行く', [], 0, true], ['行', '行', [], 0], ['きませんでした', '来る', [], 0, true]];
+    expect(await splitTagged('行きませんでした', rows)).toBe('行きませんでした');
+});
+
 test('digits stay together', async () => {
     const words = await segmentText('2024年', fakeScan({年: '年', 20: '20', 2: '2'}));
     expect(words.map(({text}) => text)).toEqual(['2024', '年']);

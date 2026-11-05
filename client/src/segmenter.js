@@ -190,9 +190,16 @@ const COST = {
     unknownKatakana: 2.1,
 };
 
-/** JMdict's scores: priority words are in the hundreds of thousands, and rare forms sit far below zero. */
+/**
+ * JMdict's scores: priority words are in the hundreds of thousands, other words just below zero, and other spellings
+ * ten thousand lower each. Jitendex scores on its own scale, from about -120 to 200, and its tags say the same: it stars
+ * priority words, scores other words 0, and names rare forms. So in a dictionary that stars, 0 is an ordinary word,
+ * as JMdict's -200 is. In one that scores everything 0 and stars nothing, 0 says nothing, and counts as common.
+ */
 const PRIORITY_SCORE = 500_000;
 const RARE_SCORE = -10_000;
+const STARRED = '★';
+const RARE_FORMS = ['rarely used form', 'obsolete reading', 'irregular form', 'old kanji form', 'search-only form'];
 const NAME_DICTIONARY = /nedict|\bnames?\b/i;
 /** JMdict's tag for a sense usually written in kana. Jitendex has none. */
 const USUALLY_KANA = 'uk';
@@ -203,7 +210,7 @@ const PARTICLE = 'prt';
 const CONJUNCTION = 'conj';
 const ADVERB = 'adv';
 const INTERJECTION = 'int';
-const READ_TAGS = new Set([USUALLY_KANA, ...PHRASE, PARTICLE, ADVERB, INTERJECTION]);
+const READ_TAGS = new Set([USUALLY_KANA, ...PHRASE, PARTICLE, ADVERB, INTERJECTION, STARRED, ...RARE_FORMS]);
 // Particles that end a conjugation, which Yomitan deinflects: であれば is not であれ + ば, nor もしかしたら
 // もしかし + たら.
 const CONJUGATION_ENDING = new Set(['ば', 'て', 'たら', 'たり']);
@@ -227,16 +234,22 @@ const CASE_PARTICLE = /[はがを]/;
 const SENTENCE_ENDING = /[ねよ]/;
 const CASE_ENDING = /[がを]/;
 
-function commonness(score) {
-    if (score >= PRIORITY_SCORE) {
+/**
+ * @param {number} score
+ * @param {string[]} names The entry's own tags.
+ * @param {boolean} stars Whether its dictionary stars priority words, so that one without a star is not one.
+ * @returns {'priority'|'common'|'uncommon'|'rare'}
+ */
+function commonness(score, names, stars) {
+    if (score >= PRIORITY_SCORE || names.includes(STARRED)) {
         return 'priority';
     }
 
-    if (score >= 0) {
-        return 'common';
+    if (score <= RARE_SCORE || RARE_FORMS.some((form) => names.includes(form))) {
+        return 'rare';
     }
 
-    return score > RARE_SCORE ? 'uncommon' : 'rare';
+    return score > 0 || (score === 0 && !stars) ? 'common' : 'uncommon';
 }
 
 /** @returns {boolean} True if hiragana matched a katakana headword, or the reverse, which only folding allows. */
@@ -269,12 +282,11 @@ function wordKey(entry) {
 const isInflected = ({inflectionRuleChainCandidates}) => Boolean(inflectionRuleChainCandidates?.some(({inflectionRules}) => inflectionRules.length > 0));
 
 /** @returns {number} The cost of a word if this entry is the best explanation of it. */
-function entryCost({score = 0, definitions}, surface, {term, reading = term}, {matchSource = 'term'}, names, inflected) {
+function entryCost({definitions}, surface, {term, reading = term}, {matchSource = 'term'}, {level, names, inflected}) {
     if (NAME_DICTIONARY.test(definitions?.[0]?.dictionary ?? '')) {
         return HAS_HIRAGANA.test(surface) ? COST.nameWithHiragana : COST.name;
     }
 
-    const level = commonness(score);
     // A reading in katakana is how the word is written. JMdict files コーヒー under 珈琲, which hardly anyone uses, with
     // the kanji's low score, so as a reading it would lose to the same katakana with no entry at all. So is kana for a
     // sense the dictionary marks as usually written in kana, as ある is for 有る, but only in a common word: rare ones
@@ -318,19 +330,28 @@ export function candidatesFrom(dictionaryEntries) {
     // gathered from all its entries, which share its sequence number, or that one would escape every rule that reads
     // them.
     const byWord = new Map();
-    for (const entry of dictionaryEntries) {
+    // Whether a dictionary stars is seen from its entries here: nearly every window has a starred one, if it does.
+    const starring = new Set();
+    const own = dictionaryEntries.map(tagNamesOf);
+    dictionaryEntries.forEach((entry, index) => {
+        if (own[index].includes(STARRED)) {
+            starring.add(entry.dictionaryIndex);
+        }
+
         const key = wordKey(entry);
         const names = byWord.get(key);
         if (names) {
-            names.push(...tagNamesOf(entry));
+            names.push(...own[index]);
         } else {
-            byWord.set(key, tagNamesOf(entry));
+            byWord.set(key, [...own[index]]);
         }
-    }
+    });
 
-    for (const entry of dictionaryEntries) {
+    for (const [index, entry] of dictionaryEntries.entries()) {
         const inflected = isInflected(entry);
         const names = byWord.get(wordKey(entry));
+        // How common a form is belongs to the form: Jitendex gives 有る and 在る one sequence, and rarity to each.
+        const level = commonness(entry.score ?? 0, own[index], starring.has(entry.dictionaryIndex));
         for (const {term, reading, sources} of entry.headwords) {
             for (const source of sources) {
                 const {originalText} = source;
@@ -355,10 +376,10 @@ export function candidatesFrom(dictionaryEntries) {
                     }
                 }
 
-                const cost = entryCost(entry, originalText, {term, reading}, source, names, inflected);
+                const cost = entryCost(entry, originalText, {term, reading}, source, {level, names, inflected});
                 const best = candidates.get(length);
                 if (!best || cost < best.cost) {
-                    candidates.set(length, {cost, term, reading, priority: (entry.score ?? 0) >= PRIORITY_SCORE, ...found});
+                    candidates.set(length, {cost, term, reading, priority: level === 'priority', ...found});
                 }
             }
         }

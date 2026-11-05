@@ -16,6 +16,42 @@ const MAX_SPLITS = 4;
  */
 const MAX_TERMS = 50_000;
 const MAX_ROWS = 30_000;
+/**
+ * Jitendex keeps a word's part of speech and usage notes in its glossaries, as spans of these kinds carrying the codes
+ * JMdict has as tags, such as `exp` and `uk`.
+ */
+const CODE_KINDS = new Set(['part-of-speech-info', 'misc-info']);
+/** Glossaries, examples and notes, most of the content, and none of it is tags. */
+const NOT_TAGS = new Set(['glossary', 'extra-info', 'attribution']);
+
+function collectCodes(content, codes) {
+    if (Array.isArray(content)) {
+        for (const item of content) {
+            collectCodes(item, codes);
+        }
+    } else if (content !== null && typeof content === 'object') {
+        const kind = content.data?.content;
+        if (CODE_KINDS.has(kind) && typeof content.data.code === 'string') {
+            codes.add(content.data.code);
+        } else if (!NOT_TAGS.has(kind)) {
+            collectCodes(content.content, codes);
+        }
+    }
+
+    return codes;
+}
+
+/** @returns {Set<string>} The codes in a row's structured content. */
+function codesOf({definitions = []}) {
+    const codes = new Set();
+    for (const definition of definitions) {
+        if (definition?.type === 'structured-content') {
+            collectCodes(definition.content, codes);
+        }
+    }
+
+    return codes;
+}
 
 export class TermStore {
     /**
@@ -41,6 +77,7 @@ export class TermStore {
     clear() {
         this._known = new Set();
         this._byId = new Map();
+        this._tags = new Map();
         this._byTerm = new Map();
         this._byReading = new Map();
         this.generation = (this.generation ?? 0) + 1;
@@ -146,10 +183,27 @@ export class TermStore {
     /**
      * @param {number} id A row's id, which the Translator keeps as its definition's `id`.
      * @returns {{definitionTags: string[], termTags: string[]}|undefined} The row's tag names, such as `exp` or `uk`
-     *   and `⭐`, which the Translator only reads in a lookup with a request for what they mean.
+     *   and `⭐`, which the Translator only reads in a lookup with a request for what they mean, and the codes its
+     *   glossary gives as tags. Worked out once a row.
      */
     tagsOf(id) {
-        return this._byId.get(id);
+        const known = this._tags.get(id);
+        if (known) {
+            return known;
+        }
+
+        const row = this._byId.get(id);
+        if (!row) {
+            return undefined;
+        }
+
+        const codes = codesOf(row);
+        const tags = {
+            definitionTags: codes.size > 0 ? [...new Set([...row.definitionTags, ...codes])] : row.definitionTags,
+            termTags: row.termTags,
+        };
+        this._tags.set(id, tags);
+        return tags;
     }
 
     /**
