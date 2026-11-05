@@ -122,12 +122,14 @@ To build it:
 
 1. Download the subtitle files by hand into `corpus/raw/`, as they come, archives included.
 2. List the titles in `corpus/titles.json`, with each title's `id`, `title`, `kind`, `set` (`dev` or `test`), `page`
-   (where it came from), `files` (paths under `corpus/`), an optional `match` (a regular expression to pick files out of
-   an archive) and `reason`, plus a top-level `seed`, `perTitle` and `secondPass`.
+   (where it came from), `files` (paths under `corpus/`, of files or of directories holding them), an optional `match`
+   (a regular expression to pick files out of an archive), an optional `perTitle` and `reason`, plus a top-level `seed`,
+   `perTitle`, `secondPassPerTitle` and `notes`.
 3. `node scripts/segmentation/extract.mjs` unpacks each archive into its own new directory, after checking its listing,
-   reads the SRT and ASS files with the plugin's own cue building, strips ruby, speaker labels, sound notes and songs,
-   and writes `corpus/sample.json`, `corpus/second-pass.txt` and `corpus/SOURCES.md`. The sample is the same every run for
-   the same seed.
+   reads the SRT and ASS files with the plugin's own cue building, strips ruby, speaker labels, sound notes, songs and
+   lines of under four letters, and writes `corpus/sample.json`, `corpus/second-pass.txt` and `corpus/SOURCES.md`. The
+   sample is the same every run for the same seed, and each title's depends only on its own files, so a title can be
+   added later without disturbing the others. `corpus/to-label.json` lists the lines still without a label.
 4. Label every line of the sample into `corpus/labels.json`, from the Japanese alone, before the splitter has been run on
    any of it.
 

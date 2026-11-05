@@ -101,6 +101,17 @@ if (problems.length > 0) {
     process.exit(1);
 }
 
+const samplePath = join(dirname(labelsPath), 'sample.json');
+if (existsSync(samplePath)) {
+    const byId = new Map(labels.map((label) => [label.id, label]));
+    const sample = JSON.parse(readFileSync(samplePath, 'utf8'));
+    const missing = sample.filter(({id}) => !byId.has(id)).length;
+    const stale = sample.filter(({id, text}) => byId.has(id) && byId.get(id).text !== text).map(({id}) => id);
+    if (missing > 0 || stale.length > 0) {
+        console.log(`Of ${sample.length} lines in sample.json, ${missing} have no label${stale.length ? `, and these changed since labelled: ${stale.join(', ')}` : ''}.\n`);
+    }
+}
+
 const chosen = labels.filter(({set}) => options.set === 'all' || set === options.set);
 
 // ---- The engine, in Node -----------------------------------------------------------------------------------------

@@ -6,9 +6,13 @@
 // It reads corpus/titles.json, which says what each title is and where its files are (see CONTRIBUTING.md), and writes
 //   corpus/lines/<id>.json   every line kept, with its file and time
 //   corpus/sample.json       the lines to label, the same every run for the same seed
-//   corpus/second-pass.txt   about 100 of those, text only, for measuring how well two labellers agree, and their ids
-//                            in second-pass.ids.txt
+//   corpus/to-label.json     the lines of the sample that corpus/labels.json has no label for, or a stale one
+//   corpus/second-pass.txt   a few lines of each title, text only, for measuring how well two labellers agree, and
+//                            their ids in second-pass.ids.txt
 //   corpus/SOURCES.md        the titles, where they came from and why they were chosen
+//
+// Each title's sample and second pass depend only on the seed, that title's id and its files, so adding a title, or
+// changing one, leaves every other title's lines and labels as they were. It never writes corpus/labels.json.
 //
 // Subtitles are never committed, since they may be copyrighted. Archives are untrusted: each is unpacked into a new
 // empty directory, after its listing is checked, and nothing in it is ever run.
@@ -28,7 +32,7 @@ if (!existsSync(manifestPath)) {
 }
 
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-const {seed = 1, perTitle = 50, secondPass = 100} = manifest;
+const {seed = 1, perTitle = 50, secondPassPerTitle = 15} = manifest;
 
 const ARCHIVE = /\.(?:zip|rar|7z)$/i;
 const SUBTITLE = /\.(?:srt|ass|ssa)$/i;
@@ -124,7 +128,10 @@ const LETTER = /[\p{L}\p{N}]/gu;
 const INLINE_RUBY = /(?<=[\p{Script=Han}々ヶ])[(（][\p{Script=Hiragana}\p{Script=Katakana}ー・]+[)）]/gu;
 // Speaker labels and sound notes: （花子）, （ドアの音）, [拍手], ［ナレーション］, 【字幕】.
 const BRACKETED = /（[^）]*）|\([^)]*\)|\[[^\]]*\]|［[^］]*］|【[^】]*】|〈[^〉]*〉/gu;
+// Doubled parentheses mark a voice heard in the head, which is dialogue: ((待ってて)).
+const DOUBLED = /\(\(|\)\)|（（|））/gu;
 const SONG = /[♪♫♬〽]/u;
+const MIN_LETTERS = 4;
 
 /** @returns {string|null} The line as the splitter would see it, or null if it is no use for scoring. */
 function cleanLine(text) {
@@ -134,12 +141,14 @@ function cleanLine(text) {
 
     const cleaned = text
         .replace(INLINE_RUBY, '')
+        .replace(DOUBLED, ' ')
         .replace(BRACKETED, ' ')
         // A line break is a boundary to the splitter, just as a space is, and one line is easier to label.
         .replace(/\s+/gu, '　')
         .replace(/^　+|　+$/gu, '');
+    // Shorter lines are nearly all a name, a gasp or a word alone, which tell little about splitting.
     const letters = cleaned.match(LETTER)?.length ?? 0;
-    return JAPANESE.test(cleaned) && letters >= 2 ? cleaned : null;
+    return JAPANESE.test(cleaned) && letters >= MIN_LETTERS ? cleaned : null;
 }
 
 /** @returns {{start: number, text: string}[]} The dialogue lines of one file, in order, as the plugin builds them. */
@@ -189,7 +198,11 @@ for (const title of manifest.titles) {
     }
 
     const files = [];
-    for (const file of title.files) {
+    // A directory stands for the subtitle files and archives directly in it.
+    const listed = title.files.flatMap((file) => (lstatSync(join(corpus, file)).isDirectory() ?
+        readdirSync(join(corpus, file)).filter((name) => SUBTITLE.test(name) || ARCHIVE.test(name)).map((name) => join(file, name)) :
+        [file]));
+    for (const file of listed) {
         const path = join(corpus, file);
         if (ARCHIVE.test(file)) {
             const unpacked = unpack(path, join(corpus, 'unpacked', title.id, basename(file, extname(file))));
@@ -221,12 +234,18 @@ for (const title of manifest.titles) {
 
 writeFileSync(join(corpus, 'sample.json'), `${JSON.stringify(sample, null, 1)}\n`);
 
-// The second pass takes the same share of every title, so no one title decides the agreement. Its ids, line for line,
+// A label is stale if its line's text changed, as when cleaning changed: it must be done again.
+const labelsPath = join(corpus, 'labels.json');
+const labelled = new Map((existsSync(labelsPath) ? JSON.parse(readFileSync(labelsPath, 'utf8')) : []).map((label) => [label.id, label]));
+const toLabel = sample.filter(({id, text}) => labelled.get(id)?.text !== text);
+writeFileSync(join(corpus, 'to-label.json'), `${JSON.stringify(toLabel, null, 1)}\n`);
+
+// The second pass takes as many lines of every title, so no one title decides the agreement. Its ids, line for line,
 // are kept apart, so the second labeller sees only the text.
-const next = random(`${seed}:second-pass`);
-const second = [...Map.groupBy(sample, ({title}) => title).values()].flatMap((lines) => {
+const second = [...Map.groupBy(sample, ({title}) => title)].flatMap(([title, lines]) => {
+    const next = random(`${seed}:second-pass:${title}`);
     const shuffled = lines.map((line) => ({line, key: next()})).sort((a, b) => a.key - b.key).map(({line}) => line);
-    return shuffled.slice(0, Math.round(secondPass * lines.length / sample.length));
+    return shuffled.slice(0, secondPassPerTitle);
 });
 writeFileSync(join(corpus, 'second-pass.txt'), `${second.map(({text}) => text).join('\n')}\n`);
 writeFileSync(join(corpus, 'second-pass.ids.txt'), `${second.map(({id}) => id).join('\n')}\n`);
@@ -237,6 +256,7 @@ writeFileSync(join(corpus, 'SOURCES.md'), [
     '',
     `Written by scripts/segmentation/extract.mjs from titles.json. Seed ${seed}, ${sample.length} lines sampled, `
         + `${second.length} in second-pass.txt. These files are not in the repository.`,
+    ...(manifest.notes ? ['', ...manifest.notes] : []),
     '',
     '| Title | Kind | Set | Page | Files | Lines | Sampled | Why |',
     '| --- | --- | --- | --- | --- | --- | --- | --- |',
@@ -245,4 +265,4 @@ writeFileSync(join(corpus, 'SOURCES.md'), [
         + `| ${sampled} | ${cell(title.reason)} |`),
     '',
 ].join('\n'));
-console.log(`${sample.length} lines in sample.json, ${second.length} in second-pass.txt`);
+console.log(`${sample.length} lines in sample.json, ${toLabel.length} of them to label, ${second.length} in second-pass.txt`);
