@@ -2,6 +2,7 @@
 // says which word and when, so a pointer here and a remote in Phase 5 behave the same.
 import {isCodePointKanji} from '../../../third_party/yomitan/ext/js/language/ja/japanese.js';
 import {PlaybackHold} from '../playback/hold.js';
+import {lookupText} from '../segmenter.js';
 import {Popup} from './popup.js';
 import {EntryRenderer} from './renderer.js';
 
@@ -166,7 +167,8 @@ export class WordLookup extends EventTarget {
         const characters = [...text].filter((character) => isCodePointKanji(character.codePointAt(0)));
         const haveKanji = characters.length > 0 && this._engine.dictionaries.some(({counts}) => counts?.kanji?.total > 0);
         const [{dictionaryEntries}, kanji] = await Promise.all([
-            this._engine.lookup(text),
+            // As the segmenter asked, so a word drawn out with a tilde finds what it found.
+            this._engine.lookup(lookupText(text)),
             haveKanji ? this._engine.lookupKanji(characters.join('')) : [],
         ]);
         return {entries: dictionaryEntries.slice(0, MAX_TERM_ENTRIES), kanji};

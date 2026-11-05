@@ -18,7 +18,58 @@ const HIRAGANA = /[ぁ-ゖゝゞ]/;
 const KATAKANA = /[ァ-ヺヽヾｦ-ﾝ]/;
 const BREAK = /[\s\p{P}\p{S}]/u;
 // These look like punctuation to Unicode but sit inside words: 〜 in names of durations, ＝ almost never, so only 〜.
-const WORD_MARKS = /[々〆ヶヵゝゞ〜ー]/u;
+// Captions draw out a sound with 〜 or with the full-width tilde ～, as in ごめ～ん, which are two characters to Unicode
+// and one to the people typing them.
+const WORD_MARKS = /[々〆ヶヵゝゞ〜～ー]/u;
+// A tilde after kana draws the sound out, as ー does. Yomitan drops ー inside a word, so ごめーん finds ごめん, but has
+// no rule for the tildes, so they are read as ー. After a kanji or a digit a tilde is a range, and stays.
+const DRAWN_OUT = /(?<=[ぁ-ゖァ-ヺー])[〜～]/gu;
+// Nothing starts with these, so they belong to the word before: ー and the tildes draw it out, and an iteration mark
+// repeats its last character, as in 担々 when the dictionary only has 担.
+const ELONGATION_MARK = /[ー〜～々ゝゞヽヾ]/;
+const SMALL_TSU = /[っッ]/;
+const VOWELS = {
+    a: 'あかさたなはまやらわがざだばぱぁゃゎ',
+    i: 'いきしちにひみりぎじぢびぴぃ',
+    u: 'うくすつぬふむゆるぐずづぶぷぅゅゔ',
+    e: 'えけせてねへめれげぜでべぺぇ',
+    o: 'おこそとのほもよろをごぞどぼぽぉょ',
+};
+const VOWEL_KANA = {a: 'あぁ', i: 'いぃ', u: 'うぅ', e: 'えぇ', o: 'おぉ'};
+const toHiragana = (character) => (/[ァ-ヶ]/.test(character) ? String.fromCharCode(character.charCodeAt(0) - 0x60) : character);
+const vowelOf = (character) => Object.keys(VOWELS).find((vowel) => VOWELS[vowel].includes(toHiragana(character)));
+
+/**
+ * @param {string} text
+ * @returns {string} What to ask Yomitan for, the same length as `text`: a tilde that draws out a sound becomes ー.
+ */
+export function lookupText(text) {
+    return text.replace(DRAWN_OUT, 'ー');
+}
+
+/**
+ * How much after a word only draws it out: ー, the tildes and iteration marks anywhere, and at the end of a run also
+ * a small っ and kana that repeat the word's last vowel, as in やだあ and なーにい. Inside a run, っ doubles the next
+ * consonant and a vowel can start the next word, so there they are left alone.
+ * @param {string} run
+ * @param {number} end Where the word ends.
+ * @returns {number} How many characters to add to the word.
+ */
+export function elongationAfter(run, end) {
+    let index = end;
+    while (index < run.length && ELONGATION_MARK.test(run[index])) {
+        index += 1;
+    }
+
+    const marks = index;
+    const vowel = vowelOf(run[end - 1] ?? '');
+    while (index < run.length && (ELONGATION_MARK.test(run[index]) || SMALL_TSU.test(run[index])
+        || (vowel && VOWEL_KANA[vowel].includes(toHiragana(run[index]))))) {
+        index += 1;
+    }
+
+    return (index === run.length ? index : marks) - end;
+}
 
 function kanaScript(character) {
     if (HIRAGANA.test(character)) {
@@ -98,7 +149,7 @@ export function splitRuns(text) {
  * @returns {string} What to scan from `index`.
  */
 export function scanWindow(run, index) {
-    return run.slice(index, index + SCAN_LENGTH);
+    return lookupText(run).slice(index, index + SCAN_LENGTH);
 }
 
 const COST = {
@@ -231,6 +282,46 @@ export function candidatesFrom(dictionaryEntries) {
     return candidates;
 }
 
+/**
+ * Yomitan keeps one match per dictionary row, its longest. When that one crosses a kana boundary and is refused, the
+ * row's shorter forms go with it: in 思えヨ, folded to 思えよ, the imperative 思え is lost. Scanning again with the window
+ * cut there finds them, and asks for nothing new, since Yomitan looks up every prefix of a window on its own.
+ * @param {object[]} dictionaryEntries
+ * @returns {number} Where to cut the window, the last boundary a refused match crosses, or 0 if none was refused. A
+ *   scan of the cut window can refuse matches across an earlier boundary in turn.
+ */
+export function refusedBoundary(dictionaryEntries) {
+    let cut = 0;
+    for (const {headwords} of dictionaryEntries) {
+        for (const {term, sources} of headwords) {
+            for (const {originalText} of sources) {
+                const boundary = lastKanaBoundary(originalText);
+                if (boundary > cut && !respectsKanaBoundary(originalText, term)) {
+                    cut = boundary;
+                }
+            }
+        }
+    }
+
+    return cut;
+}
+
+/** @returns {Promise<Map>} What `candidatesFrom` gives for a window, with what refused matches hid. */
+async function candidatesAt(window, scan) {
+    let entries = await scan(window);
+    const candidates = candidatesFrom(entries);
+    for (let cut = refusedBoundary(entries); cut > 0; cut = refusedBoundary(entries)) {
+        entries = await scan(window.slice(0, cut));
+        for (const [length, candidate] of candidatesFrom(entries)) {
+            if (!(candidates.get(length)?.cost <= candidate.cost)) {
+                candidates.set(length, candidate);
+            }
+        }
+    }
+
+    return candidates;
+}
+
 function hasParticleTail(prefix, last) {
     if (HAS_KANJI.test(prefix)) {
         return KANJI_WORD_TAIL.test(last);
@@ -282,15 +373,19 @@ async function splitRun(run, scan) {
             continue;
         }
 
-        const window = scanWindow(run, start);
-        const candidates = candidatesFrom(await scan(window));
+        const candidates = await candidatesAt(scanWindow(run, start), scan);
         allCandidates[start] = candidates;
         for (const [matchLength, {cost, term, reading, priority}] of candidates) {
             const end = start + matchLength;
             const prefix = run.slice(start, end - 1);
             const tail = hasParticleTail(prefix, run[end - 1]) && candidates.has(matchLength - 1);
             const phrase = splitsAroundParticle(run, start, end, allCandidates, priority);
-            consider(start, end, cost + (tail ? COST.particleTail : 0) + (phrase ? COST.phrase : 0), {term, reading});
+            const total = cost + (tail ? COST.particleTail : 0) + (phrase ? COST.phrase : 0);
+            consider(start, end, total, {term, reading});
+            const drawnOut = elongationAfter(run, end);
+            if (drawnOut > 0) {
+                consider(start, end + drawnOut, total, {term, reading});
+            }
         }
 
         const rest = run.slice(start);

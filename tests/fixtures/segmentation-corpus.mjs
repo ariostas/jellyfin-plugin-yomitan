@@ -50,6 +50,9 @@ export const corpus = [
     {text: 'CDを買いにいく', words: 'CD/を/買い/に/いく'},
     {text: 'ヤバい、マジでムカつく', words: 'ヤバい/マジ/で/ムカつく', or: ['ヤバい/マジで/ムカつく']},
     {text: '授業をサボった', words: '授業/を/サボった'},
+    // Folded to 言えよ, the potential's imperative, which crosses the boundary. That hid 言え, the same row.
+    {text: '早く言えヨ', words: '早く/言え/ヨ'},
+    {text: 'ちゃんと書けヨ', words: 'ちゃんと/書け/ヨ'},
     {text: 'スマホの充電が切れた', words: 'スマホ/の/充電/が/切れた'},
     {text: '3Dプリンターで作る', words: '3D/プリンター/で/作る', or: ['3Dプリンター/で/作る']},
 
@@ -82,6 +85,13 @@ export const corpus = [
     {text: '「どうして？」と彼は聞いた', words: 'どうして/と/彼/は/聞いた'},
     {text: '愛してる　愛してる　君だけを', words: '愛してる/愛してる/君/だけ/を'},
     {text: '走れ！走れ！風のように', words: '走れ/走れ/風/の/ように', or: ['走れ/走れ/風/のように']},
+
+    // Drawn-out endings, which belong to their word. Captions use ー, ～ and 〜, and a trailing っ or vowel.
+    {text: 'すみませ～ん！', words: 'すみません'},
+    {text: 'もう帰るー', words: 'もう/帰るー'},
+    {text: 'あれっ？　変だな〜', words: 'あれっ/変/だ/な'},
+    {text: 'ありがと～', words: 'ありがと'},
+    {text: '早く行くぞお', words: '早く/行くぞお', or: ['早く/行く/ぞお']},
 
     // Kanji that subtitles rarely give furigana for
     {text: '憂鬱な気分で薔薇を眺める', words: '憂鬱/な/気分/で/薔薇/を/眺める'},

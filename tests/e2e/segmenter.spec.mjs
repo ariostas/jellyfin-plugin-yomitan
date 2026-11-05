@@ -2,7 +2,7 @@
 // real thing.
 import {expect, test} from '@playwright/test';
 import {
-    candidatesFrom, lastKanaBoundary, respectsKanaBoundary, segmentText, splitRuns,
+    candidatesFrom, lastKanaBoundary, lookupText, respectsKanaBoundary, segmentText, splitRuns,
 } from '../../client/src/segmenter.js';
 
 /** Returns entries as the Translator would, for each listed surface form that starts the window. */
@@ -44,6 +44,16 @@ test('an inflected word crossing the boundary stays whole if its headword does',
     expect(await split('ヤバかった', {ヤバかった: 'ヤバい'})).toBe('ヤバかった');
 });
 
+test('a row whose longest match is refused still offers its shorter forms', async () => {
+    // As the Translator does it: one entry per dictionary row, for the longest text that matches it.
+    const forms = ['思えヨ', '思え'];
+    const scan = async (window) => {
+        const longest = forms.find((form) => window.startsWith(form));
+        return longest ? [{headwords: [{term: '思う', reading: 'おもう', sources: [{originalText: longest}]}]}] : [];
+    };
+    expect((await segmentText('思えヨ', scan)).map(({text}) => text)).toEqual(['思え', 'ヨ']);
+});
+
 test('the prolonged sound mark is no boundary', () => {
     expect(lastKanaBoundary('ラーメン')).toBe(-1);
     expect(lastKanaBoundary('おーい')).toBe(-1);
@@ -74,6 +84,32 @@ test('punctuation and line breaks end a run', () => {
 
 test('iteration marks and the prolonged sound mark are letters', () => {
     expect(splitRuns('時々ラーメン')).toEqual([{text: '時々ラーメン', start: 0}]);
+});
+
+test('a tilde that draws out a sound is a letter, and is looked up as ー', () => {
+    expect(splitRuns('ごめ～ん！')).toEqual([{text: 'ごめ～ん', start: 0}]);
+    expect(lookupText('ごめ～ん')).toBe('ごめーん');
+    expect(lookupText('はい〜')).toBe('はいー');
+    // After a digit or a kanji it is a range, which nothing draws out.
+    expect(lookupText('３～５日')).toBe('３～５日');
+});
+
+test('a drawn-out ending belongs to its word', async () => {
+    expect(await split('やるー', {や: 'や', やる: 'やる', るー: 'ルー'})).toBe('やるー');
+    expect(await split('ほれっ', {ほれ: 'ほれ'})).toBe('ほれっ');
+    expect(await split('やだあ', {やだ: 'やだ', あ: 'あ'})).toBe('やだあ');
+    expect(await split('なにいっ', {なに: '何'})).toBe('なにいっ');
+});
+
+test('inside a run, a vowel or っ after a word is left to what follows', async () => {
+    expect(await split('やだあれ', {やだ: 'やだ', あれ: 'あれ', あ: 'あ'})).toBe('やだ/あれ');
+    expect(await split('ほらっと', {ほら: 'ほら', っと: 'っと'})).toBe('ほら/っと');
+    // A vowel that is not the word's last is not drawing it out.
+    expect(await split('やだい', {やだ: 'やだ', い: 'い'})).toBe('やだ/い');
+});
+
+test('an iteration mark belongs to the word before it', async () => {
+    expect(await split('担々ギョーザ', {担: '担', ギョーザ: 'ギョーザ'})).toBe('担々/ギョーザ');
 });
 
 test('a match never crosses a line break', async () => {

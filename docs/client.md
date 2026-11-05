@@ -347,7 +347,15 @@ hardly anyone writes, `珈琲`, with their low score, and as a reading it would 
 all. The kana boundary rule from PLAN.md stays, with one refinement: a match may cross a hiragana/katakana boundary
 only if a headword does, because `ヤバい` and `消しゴム` really are written that way. The costs alone handle most of what
 the rule was for, but it still changes 17 of 1,847 lines of real subtitles, nearly all for the better, such as
-`の/デパート` over `のデ/パート`.
+`の/デパート` over `のデ/パート`. Yomitan keeps only the longest match of each dictionary row, so when that one is
+refused at a kana boundary, the window is scanned again cut there, which needs no request: in `言えヨ`, folded to the
+potential's imperative `言えよ`, the plain imperative `言え` is otherwise lost.
+
+**Drawn-out sounds belong to their word.** A tilde after kana, `～` or `〜`, is a letter, and is looked up as `ー`,
+which Yomitan drops inside a word, so `ごめ～ん` finds `ごめん`. The popup looks up the same text. After a word, `ー`, a
+tilde or an iteration mark joins it at no cost, and so, at the end of a run, do a small `っ` and kana that repeat its
+last vowel: `やるー`, `ほれっ`, `やだあ`. Inside a run those two are left alone, since `っ` doubles the next consonant
+and a vowel can start the next word.
 
 It is a one-word-at-a-time model, so it cannot use grammar. It got 24 of 28 unseen lines of real subtitles exactly right
 (fixed by hand, in advance). The misses are in `tests/fixtures/segmentation-corpus.mjs`, marked `known`.

@@ -60,7 +60,8 @@ function compare(lines, results) {
     return results.map(({text, words}, index) => {
         const {known} = lines[index];
         const allowed = splitsOf(lines[index]);
-        const got = words.filter(isWord).map((word) => word.text).join('/');
+        // Labels leave punctuation out, and a word drawn out with ～ has some inside it.
+        const got = words.filter(isWord).map((word) => word.text.replace(/[\s\p{P}\p{S}]/gu, '')).join('/');
         return {text, got, expected: allowed[0], known, right: allowed.includes(got)};
     });
 }
