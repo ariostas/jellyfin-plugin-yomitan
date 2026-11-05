@@ -8,3 +8,5 @@ test-results/
 playwright-report/
 *.user
 *.log
+# Subtitles and labels for scripts/segmentation, which may be copyrighted. See CONTRIBUTING.md.
+corpus/

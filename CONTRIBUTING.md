@@ -113,6 +113,39 @@ adds real images and a real stylesheet. It also measures how long a popup takes:
 cd tests && YOMITAN_REAL_DICTS=/path/to/dicts npx playwright test --project=chromium e2e/popup-real.spec.mjs
 ```
 
+### Segmentation corpus
+
+The splitter is measured against a few hundred lines of real subtitles, split by hand under the rules in
+[docs/segmentation-standard.md](docs/segmentation-standard.md). The subtitles and the labels are not in this repository,
+since both may be copyrighted: they live in `corpus/`, which git ignores, and only the tools and the rules are tracked.
+To build it:
+
+1. Download the subtitle files by hand into `corpus/raw/`, as they come, archives included.
+2. List the titles in `corpus/titles.json`, with each title's `id`, `title`, `kind`, `set` (`dev` or `test`), `page`
+   (where it came from), `files` (paths under `corpus/`), an optional `match` (a regular expression to pick files out of
+   an archive) and `reason`, plus a top-level `seed`, `perTitle` and `secondPass`.
+3. `node scripts/segmentation/extract.mjs` unpacks each archive into its own new directory, after checking its listing,
+   reads the SRT and ASS files with the plugin's own cue building, strips ruby, speaker labels, sound notes and songs,
+   and writes `corpus/sample.json`, `corpus/second-pass.txt` and `corpus/SOURCES.md`. The sample is the same every run for
+   the same seed.
+4. Label every line of the sample into `corpus/labels.json`, from the Japanese alone, before the splitter has been run on
+   any of it.
+
+Tuning looks only at the `dev` titles. The `test` titles check a finished change, and the scorer never lists their
+errors. To score:
+
+```sh
+YOMITAN_JITENDEX=/path/to/jitendex-yomitan.zip scripts/segmentation/server.sh up   # once, a few minutes
+node scripts/segmentation/score.mjs                                                 # dev, with JMdict
+node scripts/segmentation/score.mjs --set test --dicts jitendex
+scripts/segmentation/server.sh reset                                                # when done
+```
+
+The scorer runs `client/src/segmenter.js` and the engine from source in Node, so a change to the splitter needs no build.
+It keeps what the Translator found for each window in `corpus/.cache/`, so a run that changes only the splitter takes a
+few seconds and needs no server. It reports exact lines and word boundaries per set and per title, the dictionaries and
+code it ran, and dev's errors sorted into rough kinds. Without `corpus/labels.json` it says so and does nothing.
+
 ## Checks on real devices
 
 The automated tests emulate a phone in desktop Chromium, and press keys in jellyfin-web's TV layout in desktop browsers.
