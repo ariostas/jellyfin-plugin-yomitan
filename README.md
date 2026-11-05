@@ -98,8 +98,8 @@ None of it has been tried yet on a real phone, in the Android app or on a TV. If
 ## Known limits
 
 - **Japanese only.** The plugin only takes over a Japanese subtitle track.
-- **Word splitting is a guess.** It gets about 86% of lines exactly right. A wrong split only means a word shows as two, or
-  with its neighbour.
+- **Word splitting is a guess.** It gets about 80% of lines of real subtitles exactly right, and 97% of the places words
+  start and end. A wrong split only means a word shows as two, or with its neighbour.
 - **The line is plain.** With the feature on, ASS styling, positions and effects are replaced by plain lines: dialogue at
   the bottom, signs at the top. That is why it is off until a user turns it on.
 - **The primary subtitle track only.** A Japanese secondary track under another language is not used.

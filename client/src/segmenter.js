@@ -3,7 +3,9 @@
 // Plain greedy longest match, which the spike used, fails on real text: with a names dictionary loaded, 君のことなんて
 // comes out 君/のこ/となん/て, because のこ and となん are somebody's name. So every candidate gets a cost, and the
 // cheapest path through the line wins. A word costs about 1, so fewer words is better, and weak evidence costs more:
-// a name, a rare word, or hiragana that only matches the reading of a word normally written in kanji.
+// a name, a rare word, or hiragana that only matches the reading of a word normally written in kanji. The dictionaries'
+// tags say more: a phrase JMdict lists, like ですか, is a word and a particle, and kana for a word marked usually kana is
+// as good as its kanji.
 //
 // Two rules are absolute. Words stay inside a run of letters, so punctuation and line breaks are always boundaries.
 // And a match may not cross a hiragana/katakana boundary unless a headword is written that way: Yomitan folds katakana

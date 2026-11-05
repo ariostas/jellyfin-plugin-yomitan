@@ -376,8 +376,12 @@ tilde or an iteration mark joins it at no cost, and so, at the end of a run, do 
 last vowel: `やるー`, `ほれっ`, `やだあ`. Inside a run those two are left alone, since `っ` doubles the next consonant
 and a vowel can start the next word.
 
-It is a one-word-at-a-time model, so it cannot use grammar. It got 24 of 28 unseen lines of real subtitles exactly right
-(fixed by hand, in advance). The misses are in `tests/fixtures/segmentation-corpus.mjs`, marked `known`.
+It is a one-word-at-a-time model, so it cannot use grammar beyond what the tags of the candidates inside a span say.
+Against the hand-labelled lines of real subtitles in [CONTRIBUTING.md](../CONTRIBUTING.md#segmentation-corpus), with
+JMdict, JMnedict and KANJIDIC, it gets 268 of the 330 lines it was tuned on exactly right and 107 of the 132 held out,
+81% of each, with 97% of word boundaries right. With Jitendex it is 264 and 103. Before the changes of November 2026
+that put these rules in, it was 225 and 99 with JMdict, and 205 and 83 with Jitendex. The tracked fixture's misses are in `tests/fixtures/segmentation-corpus.mjs`,
+marked `known`.
 
 **Round trips.** A new line takes one request, however long. The engine first runs the Translator against a database that
 only records what it asks for, sends all of that in one `findTermsBulk`, and then runs the Translator for real against
