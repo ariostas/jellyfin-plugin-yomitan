@@ -54,7 +54,9 @@ The words must rebuild the line once its punctuation and spaces are gone, which 
   `(書いて/ほしい|書いてほしい)`, `(読んで/あげる|読んであげる)`, `(置いて/ある|置いてある)`. The same for
   `(待って/ください|待ってください)`.
 - **Two verbs that make a compound verb** are one word if the dictionary is likely to list it, with the parts as a choice:
-  `(泣き出した|泣き/出した)`. 割り込む and 思い出す are plainly words: one word only.
+  `(泣き出した|泣き/出した)`. 割り込む and 思い出す are plainly words: one word only. A stem and やすい, にくい or
+  つつ is the same: `(使い/やすい|使いやすい)`, and after a noun with する, `(練習/しやすい|練習/し/やすい|練習しやすい)`.
+- **A prohibitive な** after a verb splits, with the whole as a choice: `(触る/な|触るな)`.
 - **A noun with する** may be one word or two: `(勉強/する|勉強する)`, `(電話/してた|電話してた)`.
 - **A na-adjective and な** are two words: `静か/な/部屋`. With に they are both fine, `(静か/に|静かに)`, except where
   the stem is not a word on its own, as in 特に and 急に, which are one word.
@@ -74,18 +76,28 @@ The words must rebuild the line once its punctuation and spaces are gone, which 
   `という` one word.
 - **んだ, んです, のだ, のです**: `(ん/だ|んだ)` either way, since the popup for either is useful.
 - **Slang negatives and adjectives** that Yomitan deinflects are one word: `わかんない`, `すげえ`, `うめえ`, `知らねえ`.
+- **の cut to ん after a verb** stays on the verb as one word, marked `*`, and what follows is separate: `*見てん/の`,
+  `*食べてん/じゃねえ/よ`, `*来てん/の`. A ん that stands for の after a noun or the copula is the ん of `(ん/だ|んだ)`.
+- **です cut to す or っす** is separate, like です: `いい/*す/よ`, `そう/*っす`.
 
 ### Particles and sentence endings
 
 - **Each particle is a word**: は, が, を, に, で, と, も, の, へ, や, か, ね, よ, な, わ, ぞ, ぜ, さ.
+- **Compound particles** go either way: `(と/して|として)`, `(に/よって|によって)`, `(に/よる|による)`,
+  `(に/とって|にとって)`, `(と/とも/に|とともに|と/ともに)`, `(と/は/いえ|とはいえ)`. So do `(で/ある|である)` and its
+  forms, `(で/あれば|であれば)` and `(で/あって|であって)`.
 - **Particles that are words in their own right** are one word: から, まで, より, けど, けれど, のに, ので, しか, だけ,
   ばかり, くらい, ほど, など, なんて, とか, でも (both "but" and "or something"), こそ, さえ, ずつ, なら, かしら, っけ.
+- **Adverbs in に** follow the na-adjective rule, both ways where the stem is a word: `(本当/に|本当に)`, `(すぐ/に|すぐに)`,
+  `(久々/に|久々に)`. A mimetic and に split: `ぐちゃぐちゃ/に`.
 - **Two particles together** split, with the pair as a choice where the dictionary lists it: `(に/は|には)`,
   `(と/は|とは)`, `(で/は|では)`, `(に/も|にも)`. の/は and の/が only split, except in a set phrase the dictionary lists,
   such as `(と/いう/の/は|というのは)`.
 - **ても and でも after a verb** split, since Yomitan has no rule for them: `食べて/も`, `読んで/も`.
-- **Sentence-final combinations** split, with the pair as a choice: `(よ/ね|よね)`, `(か/な|かな)`, `(の/よ|のよ)`,
-  `(わ/よ|わよ)`, `(の/ね|のね)`, `(か/ね|かね)`. Three or more split into single particles with no choice.
+- **Sentence-final combinations** split, with the pair as a choice: `(よ/ね|よね)`, `(よ/な|よな)`, `(か/な|かな)`,
+  `(の/よ|のよ)`, `(わ/よ|わよ)`, `(の/ね|のね)`, `(か/ね|かね)`, `(の/か|のか)`. Three split into single particles, with
+  a choice only where a listed pair is inside: `わ/(よ/ね|よね)`. The copula's な before ん or の goes either way:
+  `(な/ん/だ|なんだ|な/んだ)`, `(な/の/よ|なのよ|な/のよ)`.
 - **Conjunctions written as one** are one word: それでも, だから, でも, じゃあ, それに, だって. `(だ/から|だから)` after a
   noun, where it is the copula and から.
 
@@ -134,16 +146,22 @@ The words must rebuild the line once its punctuation and spaces are gone, which 
 The rules above apply to dialect as to the standard, and the word is marked `*`.
 
 - **Kansai negatives in へん and ん** are one word, as Yomitan deinflects them: `*知らへん`, `*行かん`.
-- **The copula や** and its forms are separate words, like だ: `*ほんま/*や/で`. `*やねん` splits as `*や/*ねん`.
+- **The copula や** and its forms are separate words, like だ: `*ほんま/*や/で`. `*やねん` splits as `*や/*ねん`, and
+  `*やない` and `*やった` are one word each, like じゃない and だった. A character's verbal tic that stands for the copula,
+  such as アル, is the same: `好き/*アル/よ`.
+- **とる and とった for ておる** in western dialects are one word with the verb, with the split as a choice:
+  `(*待っとる|*待っ/*とる)`. Scornful おる after a stem is the same: `(*笑いおって|笑い/*おって)`.
 - **Dialect words** are words: `*あかん`, `*めっちゃ`, `*ほんま`, `*おおきに`, `*しんどい`.
 - **Kansai て and た forms** of う verbs, which Yomitan deinflects, are one word: `*買うて`, `*言うた`.
-- **Old-fashioned forms**: `ござる` and `ございます` are one word, with で before them separate:
-  `そう/で/ござる`. `*じゃ` for だ is separate. `ぬ` and `ず` stay on their verb. Yomitan does not deinflect `おる` after
+- **Old-fashioned forms**: `ござる` and `ございます` are one word, with で before them either way:
+  `そう/(で/ござる|でござる)`. `*じゃ` for だ is separate. `ぬ` and `ず` stay on their verb. Yomitan does not deinflect `おる` after
   て as it does いる, so it splits, with the whole as a choice: `(して/*おる|*しておる)`.
 
 ### Interjections, stutters and elongations
 
-- **An interjection is one word**, however written: えーっと, あのー, うーん, おい, ねえ.
+- **An interjection is one word**, however written, if the dictionary has some form of it: えーっと, あのー, うーん, おい,
+  ねえ, and gasps such as あっ, えっ, ハッ, アアッ and エエー.
+- **A name drawn out or shouted** is still a name and one word: `@たーなーかー`.
 - **A stutter split by punctuation** leaves a fragment that is not a word: `そ、そんな` is `?そ/そんな`. Without the
   comma, `?そ/そんな` all the same.
 - **An elongation belongs to its word**: `すごーい`, `待ってー`, `何っ`. A trailing っ or ー is never a word of its own.
@@ -151,9 +169,10 @@ The rules above apply to dialect as to the standard, and the word is marked `*`.
 
 ### Non-words and sound effects
 
-Laughter (`?あはは`), screams (`?ぎゃああ`), hums, gasps that no dictionary would have, and stutter fragments are marked
-`?`. The splitter is free to split them however it likes, so a line that is nothing else counts as right whatever it
-does. Sound notes in brackets, such as （拍手）, never reach a label: the extractor removes them with speaker labels.
+Laughter (`?あはは`, `?フフッ`), breathing (`?ハァ`), crying and groans (`?ううっ`), screams with no dictionary form
+(`?ぎゃああ`), growls, animal noises (`?ぶもー`), hums and stutter fragments are marked `?`. The splitter is free to
+split them however it likes, so a line that is nothing else counts as right whatever it does. Sound notes in brackets,
+such as （拍手）, never reach a label: the extractor removes them with speaker labels.
 
 ### Mixed script and romaji
 
@@ -162,6 +181,11 @@ does. Sound notes in brackets, such as （拍手）, never reach a label: the ex
 - **Romaji or English inside a Japanese line** is left as it is: `Thank/you` if a space was there, and the space is a
   boundary anyway.
 - **Kanji with inline ruby** never reach a label: the extractor strips the reading, as in 漢字(かんじ).
+
+### What the extractor leaves out
+
+Lines of under four letters, which are nearly all a name, a gasp or one word, never reach the sample. Neither do songs,
+speaker labels or sound notes. Text in doubled parentheses, `((…))`, is a voice heard in someone's head, and stays.
 
 ## When labelling forces a new decision
 

@@ -192,7 +192,7 @@ const sample = [];
 const counts = [];
 for (const title of manifest.titles) {
     if (title.files.length === 0) {
-        counts.push({title, files: 0, lines: 0, sampled: 0});
+        counts.push({title, files: 0, names: [], lines: 0, sampled: 0});
         console.log(`${title.id}: no files yet, skipped`);
         continue;
     }
@@ -228,7 +228,7 @@ for (const title of manifest.titles) {
         time: Number(start.toFixed(2)),
         text,
     }));
-    counts.push({title, files: chosen.length, lines: lines.length, sampled: picked.length});
+    counts.push({title, files: chosen.length, names: chosen.map((path) => relative(corpus, path)), lines: lines.length, sampled: picked.length});
     console.log(`${title.id} (${title.set}): ${chosen.length} files, ${lines.length} lines, ${picked.length} sampled`);
 }
 
@@ -263,6 +263,9 @@ writeFileSync(join(corpus, 'SOURCES.md'), [
     ...counts.map(({title, files, lines, sampled}) => `| ${cell(title.title)} | ${cell(title.kind)} | ${title.set} | ${cell(title.page)} `
         + `| ${cell(title.files.join(', '))}${title.match ? ` (matching \`${cell(title.match)}\`, ${files} files)` : ''} | ${lines} `
         + `| ${sampled} | ${cell(title.reason)} |`),
+    '',
+    '## Files read',
+    ...counts.flatMap(({title, names}) => ['', `${title.title}:`, '', ...names.map((name) => `- ${name}`)]),
     '',
 ].join('\n'));
 console.log(`${sample.length} lines in sample.json, ${toLabel.length} of them to label, ${second.length} in second-pass.txt`);
