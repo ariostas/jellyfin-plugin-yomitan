@@ -166,8 +166,9 @@ const COST = {
     // and four plain words here, and 料理ってい is the rare verb 料理る spanning 料理 + って + い. A rare word in its
     // dictionary form, like 生まれ変わる, is just a word.
     rarePhraseCharacter: 0.6,
-    // A span that splits around a particle is those words, not one: 気がいい is 気 + が + いい.
-    phrase: 2,
+    // A span that splits around a particle is those words, not one: 気がいい is 気 + が + いい. More than the two words
+    // it hides, or an inflected phrase like ことができた ties with its words, and a tie goes to fewer words.
+    phrase: 2.5,
     // A kanji word plus a particle, like 今日は, is that word and that particle, though the dictionary has "hello". So
     // is a phrase the dictionary lists that ends in a particle, like ですか.
     particleTail: 1.2,
@@ -211,9 +212,9 @@ const CONJUNCTION = 'conj';
 const ADVERB = 'adv';
 const INTERJECTION = 'int';
 const READ_TAGS = new Set([USUALLY_KANA, ...PHRASE, PARTICLE, ADVERB, INTERJECTION, STARRED, ...RARE_FORMS]);
-// Particles that end a conjugation, which Yomitan deinflects: であれば is not であれ + ば, nor もしかしたら
-// もしかし + たら.
-const CONJUGATION_ENDING = new Set(['ば', 'て', 'たら', 'たり']);
+// Particles that end a conjugation, which Yomitan deinflects: であれば is not であれ + ば, できた is not 出来 + た, and
+// もしかしたら is not もしかし + たら.
+const CONJUGATION_ENDING = new Set(['た', 'て', 'ば', 'たら', 'たり']);
 const CONJUGATION_PIECE = /^[てたくば]$/;
 // The case particles, and は and も, which always go with the noun before them.
 const ROLE_PARTICLE = /[はがをにでとへも]/;

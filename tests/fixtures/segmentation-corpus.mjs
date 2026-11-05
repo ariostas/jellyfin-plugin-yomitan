@@ -104,6 +104,7 @@ export const corpus = [
     {text: '雨なのに出かけた', words: '雨/な/のに/出かけた'},
     {text: '行こうとする', words: '行こう/と/する'},
     {text: '見ようとしていた', words: '見よう/と/していた'},
+    {text: '泳ぐことができた', words: '泳ぐ/こと/が/できた'},
     // And what stays whole: an interjection, a verb in kana with its ending, and a compound in dictionary form
     {text: 'おはよう、みんな', words: 'おはよう/みんな'},
     {text: 'ゴミをためて困る', words: 'ゴミ/を/ためて/困る'},
