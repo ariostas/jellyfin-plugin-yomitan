@@ -60,7 +60,9 @@ servers with those. `JF_MATRIX_BROWSERS` narrows the browsers. Four more are not
 tagged `@smoke`, which CI runs on main and every pull request; `compat`, the smoke set and every playback spec, which is
 what proves a server version, as in `JF_IMAGE=oldest scripts/test-matrix.sh compat`; `catalogue`, which starts a server
 without the plugin, adds a repository in the dashboard, installs the plugin from the catalogue and restarts, and with
-two zips in `YOMITAN_CATALOGUE_ZIPS` upgrades too; and `real`, the specs below that take real dictionaries.
+two zips in `YOMITAN_CATALOGUE_ZIPS` upgrades too; and `real`, the specs below that take real dictionaries. When a
+scenario fails, its server's state, console and log files are kept in `tests/test-results/<server name>/server/`, which
+CI uploads with the traces.
 
 The Playwright projects are `chromium`, `firefox`, `webkit` and `android-chrome`. The specs that use real input and real
 playback run on all four, and the rest on Chromium, since they test the server. Install the browsers with

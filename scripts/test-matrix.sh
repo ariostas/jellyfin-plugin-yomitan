@@ -13,6 +13,8 @@
 #                      upgrades it if given two zips. See tests/e2e/catalogue.spec.mjs
 #   real               the specs that take real dictionaries, in Chromium, with those scripts/real-dicts.sh downloads
 #
+# A failed scenario keeps its server's log in tests/test-results/<server name>/server/.
+#
 # Environment:
 #   JF_MATRIX_PORT      the first port (default 18110)
 #   JF_MATRIX_BROWSERS  the Playwright projects of plain (default chromium firefox webkit android-chrome)
@@ -77,6 +79,19 @@ playwright_for() {
     esac
 }
 
+# Keeps a failed scenario's server log beside its Playwright results, which CI uploads, before the reset deletes it: a
+# server that dies in the middle of a run says why only there. Jellyfin writes its log and each FFmpeg's to config/log,
+# and the container's own output adds what the process printed on the way down. Run in the scenario's environment.
+save_server_log() {
+    local results=$root/tests/test-results/$JF_NAME
+    mkdir -p "$results/server"
+    podman inspect --format \
+        'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}}' \
+        "$JF_NAME" >"$results/server/state.txt" 2>&1 || true
+    podman logs --timestamps "$JF_NAME" >"$results/server/console.log" 2>&1 || true
+    cp -r "$root/.dev/$JF_NAME/config/log/." "$results/server/" 2>/dev/null || true
+}
+
 port=${JF_MATRIX_PORT:-18110}
 failed=()
 
@@ -91,7 +106,7 @@ for scenario in "${selected[@]}"; do
     # shellcheck disable=SC2086 # the scenario is a list of assignments
     if ! (
         export JF_NAME=$name JF_PORT=$port ${scenarios[$scenario]}
-        trap '"$root/scripts/dev.sh" reset' EXIT
+        trap '(($? == 0)) || save_server_log; "$root/scripts/dev.sh" reset' EXIT
         "$root/scripts/dev.sh" reset &&
             "$root/scripts/dev.sh" up &&
             cd "$root/tests" &&
