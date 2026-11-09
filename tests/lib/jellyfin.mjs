@@ -221,8 +221,12 @@ async function playWith(page, itemId, {minimumTime, subtitleStreamIndex, downloa
         return video && video.currentTime > time && !video.paused;
     }, subtitleStreamIndex === undefined ? minimumTime : 0, {timeout: 45_000});
 
+    if (subtitleStreamIndex === undefined) {
+        return session.Id;
+    }
+
     // jellyfin-web ignores a subtitle index in the play command, so choose the track the way a remote control does.
-    if (subtitleStreamIndex !== undefined) {
+    if (!await burnsIn(deviceId, itemId, subtitleStreamIndex)) {
         // Its cues go in just after the download, so the quiet has to last a moment.
         await expect.poll(async () => {
             const quiet = downloads.size === 0;
@@ -233,11 +237,27 @@ async function playWith(page, itemId, {minimumTime, subtitleStreamIndex, downloa
             method: 'POST',
             body: {Name: 'SetSubtitleStreamIndex', Arguments: {Index: `${subtitleStreamIndex}`}},
         });
-        await page.waitForFunction((time) => {
-            const video = document.querySelector('video.htmlvideoplayer');
-            return video && video.currentTime > time && !video.paused;
-        }, minimumTime, {timeout: 45_000});
     }
 
+    await page.waitForFunction((time) => {
+        const video = document.querySelector('video.htmlvideoplayer');
+        return video && video.currentTime > time && !video.paused;
+    }, minimumTime, {timeout: 45_000});
+
     return session.Id;
+}
+
+/**
+ * Whether the server already burns in this track. No browser here draws image subtitles, so jellyfin-web has the one it
+ * picks first burned in. Choosing that track again restarts the transcode, and WebKit then fails to decode the new
+ * stream, with the plugin blocked too. A person has no reason to choose a track that is already on, so play() does not.
+ */
+async function burnsIn(deviceId, itemId, subtitleStreamIndex) {
+    let session;
+    await expect.poll(async () => {
+        [session] = await api(`/Sessions?deviceId=${encodeURIComponent(deviceId)}`);
+        return session?.NowPlayingItem?.Id === itemId && (session.PlayState.PlayMethod !== 'Transcode' || Boolean(session.TranscodingInfo));
+    }).toBe(true);
+    return session.PlayState.SubtitleStreamIndex === subtitleStreamIndex
+        && Boolean(session.TranscodingInfo?.TranscodeReasons?.includes('SubtitleCodecNotSupported'));
 }
