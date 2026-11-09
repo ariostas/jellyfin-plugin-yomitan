@@ -298,7 +298,13 @@ test('the Translator gives the same results on the server as on IndexedDB', asyn
 
 test('the pinned Yomitan version the importer reports is the submodule\'s', () => {
     const root = new URL('../../', import.meta.url).pathname;
-    const tag = execFileSync('git', ['-C', join(root, 'third_party/yomitan'), 'describe', '--tags'], {encoding: 'utf8'}).trim();
+    const git = (...args) => execFileSync('git', ['-C', join(root, 'third_party/yomitan'), ...args], {encoding: 'utf8'}).trim();
     const source = readFileSync(join(root, 'src/Jellyfin.Plugin.Yomitan/Dictionaries/DictionaryImporter.cs'), 'utf8');
-    expect(/YomitanVersion = "([^"]+)"/.exec(source)[1]).toBe(tag);
+    const version = /YomitanVersion = "([^"]+)"/.exec(source)[1];
+
+    // CI checks the submodule out shallow and without tags, so ask Yomitan's repository which commit the tag names.
+    const remote = git('ls-remote', 'origin', `refs/tags/${version}`, `refs/tags/${version}^{}`).split('\n');
+    const tagged = (remote.find((line) => line.endsWith('^{}')) ?? remote[0]).split('\t')[0];
+    expect(tagged, `no tag ${version} in Yomitan's repository`).toBeTruthy();
+    expect(git('rev-parse', 'HEAD')).toBe(tagged);
 });
