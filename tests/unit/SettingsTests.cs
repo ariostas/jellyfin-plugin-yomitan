@@ -116,6 +116,14 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("\"text\"")]
+    [InlineData("{not json")]
+    public void AStoredRowThatIsNotAnObjectReadsAsDefaults(string stored)
+        => Assert.Equal(SettingsValidator.Defaults(), SettingsValidator.Restore(stored));
+
+    [Theory]
     [InlineData("""{"fontScale": 49}""", "invalid_setting")]
     [InlineData("""{"enabled": "yes"}""", "invalid_setting")]
     [InlineData("""{"enabled": null}""", "invalid_setting")]

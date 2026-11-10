@@ -109,8 +109,23 @@ public static class SettingsValidator
             return values;
         }
 
-        using var document = JsonDocument.Parse(stored);
-        foreach (var property in document.RootElement.EnumerateObject())
+        JsonDocument? document = null;
+        try
+        {
+            document = JsonDocument.Parse(stored);
+        }
+        catch (JsonException)
+        {
+            // A damaged row reads as no row, and the next save replaces it.
+        }
+
+        using var parsed = document;
+        if (parsed?.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return values;
+        }
+
+        foreach (var property in parsed.RootElement.EnumerateObject())
         {
             if (Readers.TryGetValue(property.Name, out var reader))
             {
