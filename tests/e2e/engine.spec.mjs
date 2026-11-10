@@ -267,6 +267,7 @@ test.describe('when a dictionary is replaced', () => {
             window.changes = 0;
             window.engine.addEventListener('dictionarieschange', () => {
                 window.changes += 1;
+                window.announced = window.engine.dictionaries.map(({importDate}) => importDate);
                 window.segmenter.clear();
             });
             const entries = (await window.engine.lookup('昨日')).dictionaryEntries;
@@ -283,12 +284,15 @@ test.describe('when a dictionary is replaced', () => {
             const entries = (await window.engine.lookup('昨日')).dictionaryEntries;
             return {
                 changes: window.changes,
+                announcedCurrent: JSON.stringify(window.announced) === JSON.stringify(window.engine.dictionaries.map(({importDate}) => importDate)),
                 id: entries[0].definitions[0].id,
                 glossary: entries[0].definitions[0].entries,
                 peek: window.segmenter.peek(text) ?? null,
             };
         }, line);
         expect(after.changes).toBe(1);
+        // Whoever hears of the change sees the new list, not the one it replaced.
+        expect(after.announcedCurrent).toBe(true);
         expect(after.peek).toBeNull();
         expect(after.id).not.toBe(before);
         expect(after.glossary).toEqual(['meaning of 昨日']);

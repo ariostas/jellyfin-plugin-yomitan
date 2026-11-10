@@ -136,6 +136,8 @@ export class QueryClient {
 
         const {rows: dictionaries} = results.at(-1);
         const current = signature(dictionaries);
+        // Set before the callback, which decides from `dictionaries` whether anything is left to look words up in.
+        this.dictionaries = dictionaries;
         if (this._signature !== current) {
             const changed = this._signature !== null;
             this._signature = current;
@@ -144,7 +146,6 @@ export class QueryClient {
             }
         }
 
-        this.dictionaries = dictionaries;
         return results.slice(0, -1);
     }
 }
