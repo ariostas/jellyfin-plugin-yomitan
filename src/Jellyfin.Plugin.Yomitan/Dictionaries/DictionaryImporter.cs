@@ -6,6 +6,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Jellyfin.Plugin.Yomitan.Settings;
 using Microsoft.Data.Sqlite;
 
 namespace Jellyfin.Plugin.Yomitan.Dictionaries;
@@ -322,6 +323,14 @@ public sealed partial class DictionaryImporter
             if (string.IsNullOrEmpty(root.GetProperty("title").GetString()) || string.IsNullOrEmpty(root.GetProperty("revision").GetString()))
             {
                 throw new ImportException("invalid_index", "Unrecognized dictionary format: the title and revision must not be empty");
+            }
+
+            // Settings refuse longer titles, so no one could reorder or turn off this one. Logs show it whole.
+            var title = root.GetProperty("title").GetString()!;
+            if (title.Length > SettingsValidator.MaxTitleLength || title.Any(char.IsControl))
+            {
+                throw new ImportException(
+                    "invalid_index", $"The title must be at most {SettingsValidator.MaxTitleLength} characters, with no control characters");
             }
 
             return JsonNode.Parse(root.GetRawText(), null, new JsonDocumentOptions { MaxDepth = 256 })!.AsObject();

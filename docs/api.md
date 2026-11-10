@@ -1059,7 +1059,7 @@ HTTP/1.1 400 Bad Request
 | `internal` | Job | A bug or a full disk. The server log has the details |
 | `invalid_archive` | Job | Not a readable zip, or two entries with one name |
 | `invalid_bank` | Job | A bank or `styles.css` is malformed or breaks Yomitan's schema |
-| `invalid_index` | Job | `index.json` is malformed, breaks the schema, or has an unsupported format version |
+| `invalid_index` | Job | `index.json` is malformed, breaks the schema, has an unsupported format version, or its title is over 4096 characters or holds a control character |
 | `invalid_json` | 400 | The query body is not JSON |
 | `invalid_media` | Job | A glossary's image is missing, of an unknown type, or cannot be read |
 | `invalid_request` | 400 | The request has the wrong shape |

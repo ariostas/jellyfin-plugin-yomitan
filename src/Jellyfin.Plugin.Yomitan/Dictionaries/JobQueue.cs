@@ -180,12 +180,12 @@ public sealed class JobWorker : BackgroundService
             }
 
             job.State = "succeeded";
-            _logger.LogInformation("Dictionary {Kind} of {Title} succeeded", job.Kind, job.Title);
+            _logger.LogInformation("Dictionary {Kind} of {Title} succeeded", job.Kind, ForLog(job.Title));
         }
         catch (ImportException e)
         {
             Fail(job, e.Code, e.Message);
-            _logger.LogWarning("Dictionary {Kind} of {Title} failed: {Code}: {Message}", job.Kind, job.Title, e.Code, e.Message);
+            _logger.LogWarning("Dictionary {Kind} of {Title} failed: {Code}: {Message}", job.Kind, ForLog(job.Title), e.Code, ForLog(e.Message));
         }
         catch (OperationCanceledException)
         {
@@ -195,7 +195,7 @@ public sealed class JobWorker : BackgroundService
         {
             // Bugs and full disks. The transaction has rolled back either way, and details stay in the log.
             Fail(job, "internal", "The import failed on the server. The server log has the details.");
-            _logger.LogError(e, "Dictionary {Kind} of {Title} failed", job.Kind, job.Title);
+            _logger.LogError(e, "Dictionary {Kind} of {Title} failed", job.Kind, ForLog(job.Title));
         }
         finally
         {
@@ -207,6 +207,9 @@ public sealed class JobWorker : BackgroundService
             _queue.MarkFinished(job);
         }
     }
+
+    /// <summary>A title or message from a dictionary, kept to one log line so it cannot write lines of its own.</summary>
+    private static string? ForLog(string? text) => text is null ? null : string.Concat(text.Select(c => char.IsControl(c) ? '?' : c));
 
     private static void Fail(DictionaryJob job, string code, string message)
     {

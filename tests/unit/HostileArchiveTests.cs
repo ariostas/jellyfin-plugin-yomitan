@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using Jellyfin.Plugin.Yomitan.Dictionaries;
+using Jellyfin.Plugin.Yomitan.Settings;
 using Xunit;
 
 namespace Jellyfin.Plugin.Yomitan.Tests;
@@ -314,6 +316,26 @@ public class HostileArchiveTests
         using var test = new TestStore();
         var entries = name == "index.json" ? new[] { (name, content) } : [Index, (name, content)];
         Assert.Equal(code, Assert.Throws<ImportException>(() => test.Import(entries)).Code);
+    }
+
+    [Theory]
+    [InlineData("Sample\n[ERR] Forged line")]
+    [InlineData("Tab\there")]
+    [InlineData("\u0085")]
+    public void A_title_with_control_characters_is_refused(string title)
+    {
+        using var test = new TestStore();
+        var index = JsonSerializer.Serialize(new { title, format = 3, revision = "1" });
+        Assert.Equal("invalid_index", Assert.Throws<ImportException>(() => test.Import(("index.json", index))).Code);
+    }
+
+    [Fact]
+    public void A_title_longer_than_settings_accept_is_refused()
+    {
+        using var test = new TestStore();
+        string IndexWith(int length) => JsonSerializer.Serialize(new { title = new string('語', length), format = 3, revision = "1" });
+        Assert.Equal("invalid_index", Assert.Throws<ImportException>(() => test.Import(("index.json", IndexWith(SettingsValidator.MaxTitleLength + 1)))).Code);
+        Assert.Equal(SettingsValidator.MaxTitleLength, test.Import(("index.json", IndexWith(SettingsValidator.MaxTitleLength))).Title.Length);
     }
 
     [Fact]
