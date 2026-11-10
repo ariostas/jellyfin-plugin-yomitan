@@ -110,17 +110,34 @@ function classify({style = '', effect = '', tags}, mainStyle, mainIsPositioned) 
     return 'dialogue';
 }
 
-/** A sign with no Japanese in it is a translator's note or romaji, and short overlapping ones are karaoke syllables. */
-function dropUnusableSigns(cues) {
-    const fragments = cues.filter(({kind, text}) => kind === 'sign' && [...text].length <= FRAGMENT_LENGTH);
-    const overlaps = (a, b) => a !== b && a.start < b.end && b.start < a.end;
-    return cues.filter((cue) => {
-        if (cue.kind !== 'sign') {
-            return true;
+/**
+ * The fragments that overlap another fragment. One pass over them in order of start, which is how they come: a
+ * fragment overlaps an earlier one exactly when it starts before the latest end so far, and then it overlaps the one
+ * that end belongs to. That one is marked too, and a fragment overlapped only by later ones is always the latest end
+ * when the first of them comes.
+ * @param {import('./timeline.js').Cue[]} fragments Sorted by start, each with an end after its start.
+ * @returns {Set<import('./timeline.js').Cue>}
+ */
+function overlappingFragments(fragments) {
+    const overlapping = new Set();
+    let latest;
+    for (const fragment of fragments) {
+        if (latest && fragment.start < latest.end) {
+            overlapping.add(fragment).add(latest);
         }
 
-        return JAPANESE_LETTER.test(cue.text) && !(fragments.includes(cue) && fragments.some((other) => overlaps(cue, other)));
-    });
+        if (!latest || fragment.end > latest.end) {
+            latest = fragment;
+        }
+    }
+
+    return overlapping;
+}
+
+/** A sign with no Japanese in it is a translator's note or romaji, and short overlapping ones are karaoke syllables. */
+function dropUnusableSigns(cues) {
+    const syllables = overlappingFragments(cues.filter(({kind, text}) => kind === 'sign' && [...text].length <= FRAGMENT_LENGTH));
+    return cues.filter((cue) => cue.kind !== 'sign' || (JAPANESE_LETTER.test(cue.text) && !syllables.has(cue)));
 }
 
 /** Merges copies of one text that overlap or touch: outline layers, and signs repeated frame by frame. */

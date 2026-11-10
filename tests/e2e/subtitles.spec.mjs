@@ -152,6 +152,27 @@ test.describe('dialogue and signs in a fansub-style script', () => {
     test('an empty or backwards event is dropped', () => {
         expect(buildCues([{start: 1, end: 2, text: '{\\i1}'}, {start: 3, end: 3, text: 'ある'}])).toEqual([]);
     });
+
+    test('a short sign is dropped only while another short sign overlaps it', () => {
+        const sign = (start, end, text) => ({start, end, style: 'Sign', text});
+        const dialogue = {start: 20, end: 21, style: 'Default', text: 'はい、そうです'};
+        const kept = (events) => buildCues([...events, dialogue]).filter(({kind}) => kind === 'sign').map(({text}) => text);
+        // A long fragment overlapped only by a later one, past others that end before that one starts.
+        expect(kept([sign(0, 10, 'あ'), sign(1, 2, 'い'), sign(3, 4, 'う'), sign(9, 11, 'え')])).toEqual([]);
+        // Fragments that touch do not overlap, and a long sign over them does not count.
+        expect(kept([sign(0, 1, 'あ'), sign(1, 2, 'い'), sign(0, 2, '看板です')])).toEqual(['あ', '看板です', 'い']);
+        // Only the pair that overlaps goes.
+        expect(kept([sign(0, 1, 'あ'), sign(2, 4, 'い'), sign(3, 5, 'う'), sign(6, 7, 'え')])).toEqual(['あ', 'え']);
+    });
+
+    test('a karaoke template of tens of thousands of syllables builds quickly', () => {
+        // One event per syllable, each overlapping the next. Checking every pair took seconds here.
+        const events = Array.from({length: 60_000}, (_, i) => ({start: i / 10, end: i / 10 + 0.3, style: 'Kara', text: '{\\pos(960,80)}か'}));
+        const dialogue = {start: 1, end: 2, style: 'Default', text: 'はい、そうです'};
+        const started = performance.now();
+        expect(buildCues([...events, dialogue]).map(({text}) => text)).toEqual(['はい、そうです']);
+        expect(performance.now() - started).toBeLessThan(5_000);
+    });
 });
 
 test.describe('timeline', () => {
