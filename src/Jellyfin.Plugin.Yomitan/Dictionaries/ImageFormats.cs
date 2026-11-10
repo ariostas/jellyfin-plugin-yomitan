@@ -209,22 +209,12 @@ internal static class ImageFormats
         double? boxWidth = viewBox?.Length == 4 ? ParseLength(viewBox[2]) : null;
         double? boxHeight = viewBox?.Length == 4 ? ParseLength(viewBox[3]) : null;
 
-        // Mirrors an <img>: missing sizes come from the viewBox's ratio, then from the 300x150 default.
-        if (width is null && height is null && boxWidth > 0 && boxHeight > 0)
-        {
-            width = 300;
-            height = 300 * boxHeight / boxWidth;
-        }
-        else if (width is null)
-        {
-            width = height * boxWidth / boxHeight ?? 300;
-        }
-        else if (height is null)
-        {
-            height = width * boxHeight / boxWidth ?? 150;
-        }
-
-        return ((int)Math.Round(width.Value), (int)Math.Round(height!.Value));
+        // Mirrors an <img>: a missing size comes from the other one and the viewBox's ratio, then from the 300x150
+        // default. A viewBox with no area gives no ratio, and a percentage counts as missing.
+        double? ratio = boxWidth > 0 && boxHeight > 0 ? boxHeight / boxWidth : null;
+        var resolvedWidth = width ?? height / ratio ?? 300;
+        var resolvedHeight = height ?? resolvedWidth * ratio ?? 150;
+        return ((int)Math.Round(resolvedWidth), (int)Math.Round(resolvedHeight));
     }
 
     private static double? ParseLength(string? text)

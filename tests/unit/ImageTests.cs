@@ -17,6 +17,8 @@ public class ImageTests
         return bytes;
     }
 
+    private static byte[] Svg(string attributes) => Encoding.UTF8.GetBytes($"""<svg xmlns="http://www.w3.org/2000/svg" {attributes}><rect width="1" height="1"/></svg>""");
+
     public static TheoryData<string, byte[], int, int> Images() => new()
     {
         { "image/png", Png(7, 9), 7, 9 },
@@ -31,6 +33,17 @@ public class ImageTests
         { "image/avif", [0, 0, 0, 16, .. "ftyp"u8, .. "avif"u8, 0, 0, 0, 0, 0, 0, 0, 20, .. "ispe"u8, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 9], 7, 9 },
         { "image/svg+xml", Encoding.UTF8.GetBytes("""<svg xmlns="http://www.w3.org/2000/svg" width="7" height="9"/>"""), 7, 9 },
         { "image/svg+xml", Encoding.UTF8.GetBytes("""<svg xmlns="http://www.w3.org/2000/svg" width="7px" height="9pt"/>"""), 7, 12 },
+        { "image/svg+xml", Svg(""), 300, 150 },
+        { "image/svg+xml", Svg("""width="100%" height="100%" """), 300, 150 },
+        { "image/svg+xml", Svg("""viewBox="0 0 0 0" """), 300, 150 },
+        { "image/svg+xml", Svg("""width="20" viewBox="0 0 0 0" """), 20, 150 },
+        { "image/svg+xml", Svg("""height="20" viewBox="0 0 0 0" """), 300, 20 },
+        { "image/svg+xml", Svg("""viewBox="0 0 20 10" """), 300, 150 },
+        { "image/svg+xml", Svg("""viewBox="0,0,10,20" """), 300, 600 },
+        { "image/svg+xml", Svg("""width="40" viewBox="0 0 20 10" """), 40, 20 },
+        { "image/svg+xml", Svg("""height="40" viewBox="0 0 20 10" """), 80, 40 },
+        { "image/svg+xml", Svg("""width="40" """), 40, 150 },
+        { "image/svg+xml", Svg("""height="40" """), 300, 40 },
     };
 
     [Theory]
