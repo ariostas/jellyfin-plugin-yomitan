@@ -247,6 +247,21 @@ test.describe('only Japanese', () => {
         expect((await stopRecording(page)).every(({text}) => text === '')).toBe(true);
     });
 
+    test('a track tagged with another language is never fetched', async ({page}) => {
+        // Jellyfin fetches with its key in the query, so a request with the header is the plugin's. The Japanese track
+        // is the item's default, and can be fetched before play() switches away from it.
+        const fetched = [];
+        page.on('request', (request) => {
+            if (request.url().includes(`/Subtitles/${TRACKS.english}/`) && request.headers().authorization) {
+                fetched.push(request.url());
+            }
+        });
+        await logIn(page);
+        await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.english});
+        await expectTrack(page, {state: 'inactive', language: 'eng', index: TRACKS.english});
+        expect(fetched).toEqual([]);
+    });
+
     test('an untagged Japanese track activates by its text', async ({page}) => {
         await logIn(page);
         await play(page, movies.TracksSample, {subtitleStreamIndex: TRACKS.untagged});

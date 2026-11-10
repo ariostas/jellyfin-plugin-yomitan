@@ -286,9 +286,9 @@ item, aborts its own request and anything it has waiting, so the next one starts
 
 | Situation | What happens |
 | --- | --- |
-| Not Japanese | `inactive`, logged at debug level |
+| Not Japanese | `inactive`, logged at debug level. No fetch for a track tagged with another language |
 | Image or burned-in subtitles | `inactive`, logged once at debug level, no fetch |
-| `Stream.js` fails | `inactive`, native line stays |
+| `Stream.js` fails | `inactive`, native line stays, and a notice says so |
 | ASS script fails | Falls back to `Stream.js`, which has no layers or styles |
 | Query fails, at the start | `inactive`, native line stays, and a notice says so |
 | Nothing usable to look words up in | The same. See [the dictionaries a user chooses](#the-dictionaries-a-user-chooses) |
@@ -307,7 +307,8 @@ item, aborts its own request and anything it has waiting, so the next one starts
 
 **Only Japanese.** `isJapaneseTrack(stream, cues)` in `subtitles/language.js` is the one decision. A Japanese tag wins,
 any other language tag loses, and an untagged track is judged on its text: at least 30% of its letters must be kana or
-kanji, and at least 15% of those must be kana, which rules out Chinese.
+kanji, and at least 15% of those must be kana, which rules out Chinese. The session asks the tag alone first, so a
+track tagged with another language is never fetched.
 
 **ASS.** The original script comes from `Stream.ass`, the file Jellyfin's own renderer reads, because `Stream.js` drops
 layers, styles and effects. If that fails, `Stream.js` still works: its tags survive, so only style information is lost.

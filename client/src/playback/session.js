@@ -11,7 +11,7 @@ import {Layer} from '../layer.js';
 import {Overlay} from '../overlay.js';
 import {WordLookup} from '../popup/lookup.js';
 import {Segmenter} from '../segmenter.js';
-import {isJapaneseTrack} from '../subtitles/language.js';
+import {hasJapaneseTag, isJapaneseTrack, languageNeedsText} from '../subtitles/language.js';
 import {loadCues, trackContent} from '../subtitles/source.js';
 import {CueTimeline} from '../subtitles/timeline.js';
 import {NativeSubtitles} from './native-subtitles.js';
@@ -94,6 +94,13 @@ export class PlaybackSession {
         const content = trackContent(stream);
         if (content !== 'text') {
             console.debug(`[yomitan] leaving subtitle stream ${stream.Index} alone: it is ${content}`);
+            this._setInactive();
+            return;
+        }
+
+        // A track tagged with another language is refused before its text is fetched for nothing, or fails to arrive.
+        if (!hasJapaneseTag(stream) && !languageNeedsText(stream)) {
+            console.debug(`[yomitan] leaving subtitle stream ${stream.Index} alone: it is not Japanese`);
             this._setInactive();
             return;
         }
