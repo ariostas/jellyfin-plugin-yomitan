@@ -262,9 +262,16 @@ public sealed class DictionaryStore
     internal static void Checkpoint(SqliteConnection connection)
     {
         // Readers can hold this back, so it is best effort. The next write's auto-checkpoint catches up.
+        // The connection goes back to the pool, so the usual timeout comes back even if the checkpoint throws.
         Execute(connection, "PRAGMA busy_timeout = 5000");
-        Execute(connection, "PRAGMA wal_checkpoint(TRUNCATE)");
-        Execute(connection, "PRAGMA busy_timeout = 30000");
+        try
+        {
+            Execute(connection, "PRAGMA wal_checkpoint(TRUNCATE)");
+        }
+        finally
+        {
+            Execute(connection, "PRAGMA busy_timeout = 30000");
+        }
     }
 
     internal SqliteConnection OpenWriter()
