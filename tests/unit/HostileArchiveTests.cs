@@ -94,13 +94,34 @@ public class HostileArchiveTests
     public void A_zip64_archive_is_read_through_its_zip64_record()
     {
         using var test = new TestStore();
+        var path = WriteZip64(test, directoryStart: null);
+
+        Assert.Equal("Sample", test.Import(path).Title);
+        test.Store.Delete("Sample");
+        var error = Assert.Throws<ImportException>(() => test.Import(path, limits: new ImportLimits { MaxEntries = 1 }));
+        Assert.Contains("entries", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(long.MaxValue)]
+    [InlineData(long.MaxValue - 10)]
+    [InlineData(ulong.MaxValue)]
+    public void A_zip64_directory_past_the_end_of_the_file_is_refused(ulong directoryStart)
+    {
+        using var test = new TestStore();
+        var path = WriteZip64(test, directoryStart);
+        Assert.Equal("invalid_archive", Assert.Throws<ImportException>(() => test.Import(path)).Code);
+    }
+
+    /// <summary>Rewrites a small archive with a zip64 record, which says where the directory starts.</summary>
+    private static string WriteZip64(TestStore test, ulong? directoryStart)
+    {
         var path = test.WriteZip(Index, ("term_bank_1.json", "[]"));
         var bytes = File.ReadAllBytes(path);
         var end = bytes.Length - 22;
         Assert.Equal(0x06054b50u, BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end)));
         var entries = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(end + 10));
         var directorySize = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 12));
-        var directoryStart = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 16));
 
         var end64 = new byte[56];
         BinaryPrimitives.WriteUInt32LittleEndian(end64, 0x06064b50);
@@ -110,7 +131,7 @@ public class HostileArchiveTests
         BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(24), entries);
         BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(32), entries);
         BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(40), directorySize);
-        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(48), directoryStart);
+        BinaryPrimitives.WriteUInt64LittleEndian(end64.AsSpan(48), directoryStart ?? BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(end + 16)));
 
         var locator = new byte[20];
         BinaryPrimitives.WriteUInt32LittleEndian(locator, 0x07064b50);
@@ -123,11 +144,7 @@ public class HostileArchiveTests
         BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(12), uint.MaxValue);
         BinaryPrimitives.WriteUInt32LittleEndian(tail.AsSpan(16), uint.MaxValue);
         File.WriteAllBytes(path, [.. bytes[..end], .. end64, .. locator, .. tail]);
-
-        Assert.Equal("Sample", test.Import(path).Title);
-        test.Store.Delete("Sample");
-        var error = Assert.Throws<ImportException>(() => test.Import(path, limits: new ImportLimits { MaxEntries = 1 }));
-        Assert.Contains("entries", error.Message, StringComparison.Ordinal);
+        return path;
     }
 
     /// <summary>
@@ -284,6 +301,19 @@ public class HostileArchiveTests
         var error = Assert.Throws<ImportException>(() => test.Import(Index, ("term_bank_1.json", """[["良","りょう","","",0,["good"],1,""]]"""), ("term_bank_2.json", bank)));
         Assert.Equal("invalid_bank", error.Code);
         Assert.Equal(before, test.Fingerprint());
+    }
+
+    [Theory]
+    [InlineData("index.json", """{"title":"\ud83d","format":3,"revision":"1"}""", "invalid_index")]
+    [InlineData("index.json", """{"title":"Sample","format":3,"revision":"1","sourceLanguage":"\ud83d"}""", "invalid_index")]
+    [InlineData("index.json", """{"title":"Sample","format":3,"revision":"1","author":"\ud83d"}""", "invalid_index")]
+    [InlineData("kanji_bank_1.json", """[["\ud83d","","","",[],{}]]""", "invalid_bank")]
+    [InlineData("term_bank_1.json", """[["語","ご","","",0,[{"type":"structured-content","content":{"tag":"a","href":"\ud83d","content":"x"}}],1,""]]""", "invalid_bank")]
+    public void A_lone_surrogate_anywhere_fails_cleanly(string name, string content, string code)
+    {
+        using var test = new TestStore();
+        var entries = name == "index.json" ? new[] { (name, content) } : [Index, (name, content)];
+        Assert.Equal(code, Assert.Throws<ImportException>(() => test.Import(entries)).Code);
     }
 
     [Fact]

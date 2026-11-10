@@ -193,7 +193,8 @@ internal sealed class SafeArchive : IDisposable
         var header = new byte[HeaderSize];
         var position = directoryStart;
         var count = 0;
-        while (position + HeaderSize <= length)
+        // Written this way round, a zip64 offset near long.MaxValue cannot overflow into a seek that succeeds.
+        while (position <= length - HeaderSize)
         {
             archive.Position = position;
             archive.ReadExactly(header);

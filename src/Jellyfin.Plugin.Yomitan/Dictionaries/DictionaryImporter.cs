@@ -301,12 +301,22 @@ public sealed partial class DictionaryImporter
             }
 
             using var document = ParseJson(entry, _limits.MaxMetadataBytes, "invalid_index");
-            if (!JsonSchema.Load("dictionary-index").IsValid(document.RootElement))
+            var root = document.RootElement;
+            try
+            {
+                // Everything after this reads the index's strings freely.
+                EnsureReadable(root);
+            }
+            catch (InvalidOperationException e)
+            {
+                throw new ImportException("invalid_index", $"index.json has an unreadable value: {e.Message}");
+            }
+
+            if (!JsonSchema.Load("dictionary-index").IsValid(root))
             {
                 throw new ImportException("invalid_index", "index.json does not match the dictionary index schema, or has an unsupported format version");
             }
 
-            var root = document.RootElement;
             var hasFormat = root.TryGetProperty("format", out var format);
             version = (hasFormat ? format : root.GetProperty("version")).GetInt32();
             if (string.IsNullOrEmpty(root.GetProperty("title").GetString()) || string.IsNullOrEmpty(root.GetProperty("revision").GetString()))
@@ -315,6 +325,32 @@ public sealed partial class DictionaryImporter
             }
 
             return JsonNode.Parse(root.GetRawText(), null, new JsonDocumentOptions { MaxDepth = 256 })!.AsObject();
+        }
+
+        /// <summary>Decodes every string and name, which throws on one the runtime cannot hold, such as a lone surrogate.</summary>
+        private static void EnsureReadable(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String:
+                    value.GetString();
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var item in value.EnumerateArray())
+                    {
+                        EnsureReadable(item);
+                    }
+
+                    break;
+                case JsonValueKind.Object:
+                    foreach (var property in value.EnumerateObject())
+                    {
+                        _ = property.Name;
+                        EnsureReadable(property.Value);
+                    }
+
+                    break;
+            }
         }
 
         /// <summary>Port of _createSummary. Counts and styles are filled in once they are known.</summary>
@@ -423,10 +459,9 @@ public sealed partial class DictionaryImporter
             _currentFile = file.FullName;
             using var document = ParseJson(file, _limits.MaxBankBytes, "invalid_bank");
             var rows = document.RootElement;
-            schema.ValidateBank(rows, file.FullName);
-
             try
             {
+                schema.ValidateBank(rows, file.FullName);
                 foreach (var row in rows.EnumerateArray())
                 {
                     insert(row);
