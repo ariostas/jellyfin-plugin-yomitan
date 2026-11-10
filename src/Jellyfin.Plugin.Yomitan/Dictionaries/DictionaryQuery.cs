@@ -323,7 +323,7 @@ public sealed class DictionaryQuery
                 }
                 catch (SqliteException e) when (e.SqliteErrorCode == SqliteInterrupt)
                 {
-                    // The deadline stopped a statement. Nothing is written while one runs, so the output is whole.
+                    // The deadline stopped a statement. It lands between rows, and each row is written whole, so the output is whole.
                     _truncated = true;
                 }
 

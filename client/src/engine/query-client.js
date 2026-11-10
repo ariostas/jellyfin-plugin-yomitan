@@ -25,7 +25,7 @@ function shouldRetry(error) {
  * @returns {{signal: AbortSignal, done: () => void}} A signal that also aborts at the timeout, and how to let it go.
  */
 function withTimeout(signal) {
-    // AbortSignal.any would do this, but it is newer than some of the TVs jellyfin-web runs on.
+    // AbortSignal.any would do this, but it is newer than the oldest browsers README.md lists.
     const controller = new AbortController();
     const abort = () => controller.abort(signal.reason);
     const timer = setTimeout(() => {

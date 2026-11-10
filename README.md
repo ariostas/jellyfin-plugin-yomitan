@@ -78,8 +78,11 @@ The plugin adds a script to the web interface that the server hosts, so it only 
 | Jellyfin Android app | Should work, but only with the web player: in the app's settings, under **Video player**, set **Video player type** to **Web player**. The default player is native, and the plugin cannot reach it. |
 | jellyfin-web's TV layout, in a browser | Should work. Tested with key presses, not a real remote. |
 | Android TV, Google TV, Fire TV | No, and no plugin can: the app is native and never loads the web interface. |
-| Samsung Tizen, LG webOS | Not tried. Tizen brings its own copy of the web interface, which the plugin cannot reach. webOS loads the server's, so it may work. |
+| Samsung Tizen, LG webOS | Not tried. Tizen brings its own copy of the web interface, which the plugin cannot reach. webOS loads the server's, but an older TV's browser may be older than the plugin needs, below. |
 | Jellyfin Desktop, Swiftfin, iOS apps | Not tried. |
+
+The browser has to be at least Chrome 103, Firefox 104 or Safari 16.4 (iOS 16.4). In an older one the plugin does not
+work, though Jellyfin's own subtitles still show.
 
 None of it has been tried yet on a real phone, in the Android app or on a TV. If you try one,
 [an issue](https://github.com/ariostas/jellyfin-plugin-yomitan/issues) saying what worked and what did not helps a lot.

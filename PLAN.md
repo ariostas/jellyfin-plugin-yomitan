@@ -272,7 +272,14 @@ See [docs/client.md](docs/client.md#settings).
   button classes of the OSD, `#myPreferencesMenuPage` and `.lnkSubtitlePreferences`, the `viewshow` event reaching `window`,
   `ApiClient.getCurrentUserId()`, `accessToken()`, `getUrl()` and `setRequestHeaders()`, `data-controller="__plugin/..."` and
   the `.page.type-interior` and `.content-primary` classes on the dashboard page, and `IAuthorizationContext` on the
-  server. Failures here are the early warning.
+  server. Also `.libassjs-canvas-parent`, the `manualTrack` label on the text tracks jellyfin-web manages,
+  `Events.trigger` being a property a script can wrap, the `playbackstart` and `playbackstop` events on
+  `playbackManager`, and its `getCurrentPlayer()`, `isPlayingVideo()`, `currentItem()`, `currentMediaSource()`,
+  `getSubtitleStreamIndex()`, `subtitleTracks()`, `getPlayerSubtitleOffset()` and
+  `getSecondarySubtitleStreamIndex()`, read on every poll. On the server's side, `Stream.js` answering with
+  `TrackEvents` of `Text`, `StartPositionTicks` and `EndPositionTicks`. Failures here are the early warning.
+  One fails silently rather than safe: the player's private `_currentPlayOptions.transcodingOffsetTicks`. If it goes,
+  the overlay stays up with every line early or late by where a progressive transcode started.
 - README listing client support honestly, including the Android player setting.
 
 **Phase 7 result:** done, except what needs the GitHub repository to exist. What changed from the list above:
