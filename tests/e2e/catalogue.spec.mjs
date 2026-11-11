@@ -149,6 +149,9 @@ test('a repository URL is all it takes to install, and to upgrade', async ({page
         await expectRunning(page, zips[1]);
         const mini = await clientFor(credentials.username, credentials.password);
         expect((await (await mini.list()).json()).dictionaries.map(({title}) => title)).toEqual(['Mini']);
-        expect(await readSettings(credentials)).toEqual(settings);
+        // 0.1.0 had no introSeen, and stored upOnlyEntry false with every save, so the first start of a newer version
+        // reads that false as never chosen. Everything else stays as it was.
+        const migrated = 'introSeen' in settings ? settings : {...settings, introSeen: false, upOnlyEntry: settings.upOnlyEntry || null};
+        expect(await readSettings(credentials)).toEqual(migrated);
     });
 });
