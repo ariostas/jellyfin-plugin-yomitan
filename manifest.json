@@ -9,6 +9,14 @@
     "imageUrl": null,
     "versions": [
       {
+        "version": "0.2.0.0",
+        "changelog": "- fix(store): restore the busy timeout even when a checkpoint throws\n- fix(settings): read a stored row that is not a JSON object as no row\n- fix(playback): refuse a track tagged with another language before fetching it\n- fix(import): refuse titles settings cannot hold, and keep them to one log line\n- fix(import): refuse lone surrogates and a zip64 directory past the end as bad input\n- fix(engine): announce a dictionary change with the new list in place\n- perf(subtitles): find overlapping karaoke syllables in one pass\n- fix(import): size an SVG with no usable width, height or viewBox as an <img> does\n- fix(segmenter): let a phrase with a particle inside lose its ties\n- fix(segmenter): read Jitendex's scale and its part-of-speech codes\n- feat(segmenter): split the phrases JMdict lists by what their tags say they are\n- feat(segmenter): count kana for usually-kana words as written, and give scans tag names\n- fix(segmenter): keep drawn-out endings on their word, and find forms a refused match hid\n- fix(segmenter): count katakana that matches a reading as written\n- perf(client): take 800 bytes off the loader, and keep them off\n- fix(test): keep each title's corpus sample stable when titles are added\n- fix: make the feature easier to find, and four smaller UX fixes\n- fix: close eight gaps found in review\n- feat: link Yomitan's list of dictionaries from the dashboard page",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/ariostas/jellyfin-plugin-yomitan/releases/download/v0.2.0/yomitan_0.2.0.0.zip",
+        "checksum": "665692ee05e95c3e97ade193feeb472d",
+        "timestamp": "2026-11-11T12:55:35Z"
+      },
+      {
         "version": "0.1.0.0",
         "changelog": "- First release.",
         "targetAbi": "12.0.0.0",
